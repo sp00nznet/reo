@@ -290,19 +290,32 @@ int main(int argc, char* argv[]) {
                 if (pos != std::string::npos) {
                     iso_elf_path = iso_elf_path.substr(pos + 2);
                 }
+                // Strip version suffix (;1)
+                auto semi = iso_elf_path.find(';');
+                if (semi != std::string::npos) {
+                    iso_elf_path = iso_elf_path.substr(0, semi);
+                }
                 // Replace backslash with forward slash
                 for (auto& c : iso_elf_path) {
                     if (c == '\\') c = '/';
                 }
-                // Replace underscores in SLUS path
-                // Try both with and without period
+                // Try finding the ELF in the ISO
                 auto* elf_entry = iso.find(iso_elf_path);
                 if (!elf_entry) {
-                    // Try replacing _ with . or vice versa
-                    for (auto& c : iso_elf_path) {
+                    // Try with underscores replaced by dots
+                    std::string alt = iso_elf_path;
+                    for (auto& c : alt) {
                         if (c == '_') c = '.';
                     }
-                    elf_entry = iso.find(iso_elf_path);
+                    elf_entry = iso.find(alt);
+                }
+                if (!elf_entry) {
+                    // Try with dots replaced by underscores
+                    std::string alt = iso_elf_path;
+                    for (auto& c : alt) {
+                        if (c == '.') c = '_';
+                    }
+                    elf_entry = iso.find(alt);
                 }
 
                 if (elf_entry) {
