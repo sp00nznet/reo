@@ -57,6 +57,9 @@ add_subdirectory(media)
 # Game-specific code
 add_subdirectory(game)
 
+# Recompiled game (PS2Recomp output)
+add_subdirectory(recomp)
+
 # Main executable
 add_executable(reo
     src/main.cpp
