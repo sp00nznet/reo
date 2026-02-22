@@ -126,35 +126,56 @@ reo/
 
 ## Building
 
-> **Prerequisites:** Visual Studio 2022 (or MSVC build tools), CMake 3.20+, Vulkan SDK, a legally owned Outbreak ISO
+> **Prerequisites:** Visual Studio 2022, CMake 3.20+, Vulkan SDK, a legally owned RE Outbreak NTSC-U ISO (SLUS-20765)
 
 ```bash
-# Clone with submodules
-git clone --recursive https://github.com/sp00nznet/reo.git
+# Clone
+git clone https://github.com/sp00nznet/reo.git
 cd reo
 
-# Place your game ISO
-cp /path/to/your/Outbreak.iso .
+# Clone PS2Recomp (recompilation toolchain)
+git clone https://github.com/ran-j/PS2Recomp.git third_party/PS2Recomp
 
-# Extract game data
-python tools/iso_extract/extract.py Outbreak.iso
+# Build PS2Recomp tools
+cd third_party/PS2Recomp
+cmake -S . -B out/build -G "Visual Studio 17 2022" -A x64
+cmake --build out/build --config Release
+cd ../..
 
-# Configure and build
+# Build REO tools
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 
-# Run
+# Extract game data from your ISO
+./build/tools/iso_extract/Release/reo-extract.exe "YourOutbreak.iso" game_data
+
+# Analyze and recompile the ELF (MIPS → C++)
+./third_party/PS2Recomp/out/build/ps2xAnalyzer/Release/ps2_analyzer.exe \
+    game_data/SLUS_207.65 recomp/config/outbreak.toml
+./third_party/PS2Recomp/out/build/ps2xRecomp/Release/ps2_recomp.exe \
+    recomp/config/outbreak.toml
+
+# Run (not yet functional — runtime bridge in progress)
 ./build/Release/reo.exe
 ```
+
+### Current Status
+
+The recompilation pipeline is **working**:
+- ISO extraction: all game files extracted (ELF, IOP modules, data archives)
+- ELF analysis: 3,461 functions identified, 252 auto-skipped (HW I/O)
+- MIPS → C++: 3,209 functions translated to native x86-64 (66 MB of C++)
+- Next: bridge the recompiled code to our runtime HAL
 
 ## Roadmap
 
 ### Phase 1 — Foundation (Current)
 - [x] Project structure and build system
-- [ ] ISO extraction and ELF analysis tooling
-- [ ] PS2Recomp integration and first-pass recompilation
-- [ ] Basic memory map and CPU context runtime
-- [ ] Boot toings black screen (proof of life)
+- [x] ISO extraction and ELF analysis tooling (working! extracts all files)
+- [x] PS2Recomp integration — **3,461 functions analyzed, 3,209 recompiled to C++**
+- [x] Basic memory map and CPU context runtime (32MB RAM, MMIO, scratchpad)
+- [ ] Bridge recompiled code to REO runtime (connect PS2Recomp output to our HAL)
+- [ ] Boot to black screen (proof of life)
 
 ### Phase 2 — See Something
 - [ ] GS renderer (Vulkan) — render the first frame
