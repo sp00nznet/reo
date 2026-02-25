@@ -65,7 +65,7 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
         target_compile_options(${TARGET_NAME} PRIVATE
             /W0           # Disable warnings for generated code
             /bigobj       # Generated files can be large
-            /MP2          # Parallel compilation (reduced to avoid CPU overload)
+            /MP           # Parallel compilation (use all cores)
             /O2           # Optimize
         )
     endif()

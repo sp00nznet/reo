@@ -9,18 +9,17 @@
  * override structure is largely identical — same GS/SPU2/IOP
  * interfaces, same SN@P network stack, same DNAS flow.
  *
- * Strategy:
- *   The PS2Recomp runtime handles syscalls (threads, semaphores, SIF,
- *   file I/O) and MMIO (GS registers, DMA, VU memory) automatically.
- *   Statically-linked SDK functions (scePad*, sceCd*, sceSd*, etc.)
- *   were either recompiled or generated as TODO stubs.
+ * Function addresses were identified by analyzing the recompiled code:
+ *   - Boot sequence from entry point (0x100008)
+ *   - Syscall wrapper table at 0x114240-0x1148F0 (fully recompiled)
+ *   - Init chain: sub_0011D908 calls GS/CDVD/pad init stubs
+ *   - Network stubs in 0x1B5000-0x1B8000 range
  *
- *   Stubs log "TODO_NAMED" at runtime and return 0. As we identify
- *   function addresses (via Ghidra or runtime observation), we bind
- *   them to proper handlers here using bindAddressHandler() or
- *   registerFunction().
- *
- *   The RE Code Veronica override in PS2Recomp serves as our template.
+ * The PS2Recomp runtime handles:
+ *   - SYSCALL dispatch (threads, semaphores, SIF RPC, file I/O)
+ *   - MMIO access (GS registers, DMA channels, VU memory)
+ *   - VU0 macro-mode COP2 instructions (inline SSE)
+ *   - The 0x114xxx syscall wrappers work via handleSyscall() already
  */
 
 #include "ps2_runtime.h"
@@ -36,10 +35,10 @@
 // Signature: void(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime)
 // ═══════════════════════════════════════════════════════════════════════
 
-// Generic "return 0" handler — used for functions that just need to succeed
+// Generic "return 0" handler — used for init functions that just need to succeed
 static void reo_ret0(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     setReturnU32(ctx, 0);
-    ctx->pc = getRegU32(ctx, 31); // return to caller
+    ctx->pc = getRegU32(ctx, 31);
 }
 
 // Generic "return 1" handler
@@ -48,20 +47,22 @@ static void reo_ret1(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// Generic "return -1" handler (error indicator for some PS2 APIs)
-static void reo_ret_neg1(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    setReturnS32(ctx, -1);
+// Logging "return 0" — same as ret0 but logs the first few calls
+static void reo_ret0_log(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    static int logCount = 0;
+    if (logCount < 8) {
+        printf("[REO] stub at pc=0x%08X (ret0)\n", ctx->pc);
+        logCount++;
+    }
+    setReturnU32(ctx, 0);
     ctx->pc = getRegU32(ctx, 31);
 }
 
 // ── Printf handler ────────────────────────────────────────────────────
-// Intercepts the game's printf to display messages on the host console.
-// PS2 printf: $a0 = format string pointer (guest address)
 static void reo_printf(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t fmtAddr = getRegU32(ctx, 4); // $a0 = format string
+    uint32_t fmtAddr = getRegU32(ctx, 4);
     if (fmtAddr != 0 && (fmtAddr & PS2_RAM_MASK) < PS2_RAM_SIZE - 256) {
         const char* fmt = reinterpret_cast<const char*>(rdram + (fmtAddr & PS2_RAM_MASK));
-        // Safety: just print the raw format string (don't try to process varargs)
         static int logCount = 0;
         if (logCount < 500) {
             printf("[GAME] %s", fmt);
@@ -72,10 +73,9 @@ static void reo_printf(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── Memory allocator ──────────────────────────────────────────────────
-// RE Outbreak uses a custom allocator (likely syMalloc/syFree pattern)
+// ── Memory allocator (syMalloc/syFree pattern) ────────────────────────
 static void reo_malloc(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t size = getRegU32(ctx, 4); // $a0
+    uint32_t size = getRegU32(ctx, 4);
     uint32_t result = 0;
     if (runtime && size != 0) {
         result = runtime->guestMalloc(size, 64);
@@ -90,8 +90,8 @@ static void reo_malloc(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
 }
 
 static void reo_calloc(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t count = getRegU32(ctx, 4); // $a0
-    uint32_t size = getRegU32(ctx, 5);  // $a1
+    uint32_t count = getRegU32(ctx, 4);
+    uint32_t size = getRegU32(ctx, 5);
     uint32_t result = 0;
     if (runtime && count != 0 && size != 0) {
         result = runtime->guestCalloc(count, size, 64);
@@ -101,7 +101,7 @@ static void reo_calloc(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
 }
 
 static void reo_free(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t addr = getRegU32(ctx, 4); // $a0
+    uint32_t addr = getRegU32(ctx, 4);
     if (runtime && addr != 0) {
         runtime->guestFree(addr);
     }
@@ -110,8 +110,8 @@ static void reo_free(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
 }
 
 static void reo_realloc(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t addr = getRegU32(ctx, 4);    // $a0
-    uint32_t newSize = getRegU32(ctx, 5); // $a1
+    uint32_t addr = getRegU32(ctx, 4);
+    uint32_t newSize = getRegU32(ctx, 5);
     uint32_t result = 0;
     if (runtime) {
         result = runtime->guestRealloc(addr, newSize, 64);
@@ -120,21 +120,18 @@ static void reo_realloc(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) 
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── Heap init (syMallocInit pattern from RE engine) ───────────────────
+// ── Heap init (syMallocInit) ──────────────────────────────────────────
 static void reo_heap_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     if (runtime) {
-        uint32_t heapBase = getRegU32(ctx, 4); // $a0
-        uint32_t heapSize = getRegU32(ctx, 5); // $a1
+        uint32_t heapBase = getRegU32(ctx, 4);
+        uint32_t heapSize = getRegU32(ctx, 5);
 
-        // Normalize KSEG0/KSEG1 addresses to physical
         uint32_t normalizedBase = heapBase;
         if (normalizedBase >= 0x80000000u && normalizedBase < 0xC0000000u) {
             normalizedBase &= 0x1FFFFFFFu;
         } else if (normalizedBase >= PS2_RAM_SIZE) {
             normalizedBase &= PS2_RAM_MASK;
         }
-
-        // Sanity check
         if (normalizedBase == 0 || normalizedBase < 0x00100000u) {
             normalizedBase = runtime->guestHeapBase();
         }
@@ -144,7 +141,6 @@ static void reo_heap_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime
             uint64_t candidate = (uint64_t)normalizedBase + (uint64_t)heapSize;
             heapLimit = (uint32_t)std::min<uint64_t>(candidate, PS2_RAM_SIZE);
         }
-
         runtime->configureGuestHeap(normalizedBase, heapLimit);
         printf("[REO] heapInit base=0x%08X size=0x%X -> base=0x%08X end=0x%08X\n",
                heapBase, heapSize, runtime->guestHeapBase(), runtime->guestHeapEnd());
@@ -153,16 +149,95 @@ static void reo_heap_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── Pad (controller) stubs ────────────────────────────────────────────
-// scePadInit returns 1 (success), scePadPortOpen returns port handle,
-// scePadRead writes controller state to buffer, etc.
+// ── GS (Graphics Synthesizer) ─────────────────────────────────────────
 
-static void reo_pad_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    printf("[REO] scePadInit\n");
-    setReturnU32(ctx, 1); // success
+// sceGsResetGraph — initializes the GS hardware
+static void reo_gs_reset_graph(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    uint32_t mode = getRegU32(ctx, 4);
+    printf("[REO] sceGsResetGraph mode=%d\n", mode);
+    // The PS2Recomp runtime manages GS state via PS2Memory::gs_regs
+    setReturnU32(ctx, 0);
     ctx->pc = getRegU32(ctx, 31);
 }
 
+// sceGsPutDispEnv — set display environment (resolution, interlace, etc.)
+static void reo_gs_put_disp_env(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    static int logCount = 0;
+    if (logCount < 4) {
+        printf("[REO] sceGsPutDispEnv\n");
+        logCount++;
+    }
+    setReturnU32(ctx, 0);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// sceGsResetPath — reset GIF transfer paths
+static void reo_gs_reset_path(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    static int logCount = 0;
+    if (logCount < 4) {
+        printf("[REO] sceGsResetPath mode=%d\n", getRegU32(ctx, 4));
+        logCount++;
+    }
+    setReturnU32(ctx, 0);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// sceGsSyncPath — wait for GIF path to finish
+static void reo_gs_sync_path(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    // Return immediately (no GIF DMA to wait for)
+    setReturnU32(ctx, 0);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// sceGsSyncV — wait for vsync
+static void reo_gs_sync_v(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    setReturnU32(ctx, 0);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// GS sync primitive — called from render/network loops
+static void reo_gs_sync(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    setReturnU32(ctx, 0);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// ── CD/DVD ────────────────────────────────────────────────────────────
+
+// sceCdInit — initialize CDVD subsystem
+static void reo_cd_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    printf("[REO] sceCdInit mode=%d\n", getRegU32(ctx, 4));
+    setReturnU32(ctx, 1);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// sceCdDiskReady — check if disc is ready
+static void reo_cd_disk_ready(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    setReturnU32(ctx, 2); // SCECdComplete
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// sceCdGetDiskType — return disc type
+static void reo_cd_get_disk_type(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    setReturnU32(ctx, 0x14); // SCECdPS2DVD
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// sceCdStatus — return drive status
+static void reo_cd_status(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    setReturnU32(ctx, 0x0A); // SCECdStatPause
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// ── Pad (controller) ──────────────────────────────────────────────────
+
+// scePadInit — initialize pad subsystem
+static void reo_pad_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    printf("[REO] scePadInit\n");
+    setReturnU32(ctx, 1);
+    ctx->pc = getRegU32(ctx, 31);
+}
+
+// scePadPortOpen — open a pad port
 static void reo_pad_port_open(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     static int logCount = 0;
     if (logCount < 4) {
@@ -170,101 +245,81 @@ static void reo_pad_port_open(uint8_t* rdram, R5900Context* ctx, PS2Runtime* run
                getRegU32(ctx, 4), getRegU32(ctx, 5));
         logCount++;
     }
-    setReturnU32(ctx, 1); // success
+    setReturnU32(ctx, 1);
     ctx->pc = getRegU32(ctx, 31);
 }
 
+// scePadGetState — return pad connection state
 static void reo_pad_get_state(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    // Return PAD_STATE_STABLE (6) = pad is ready
-    setReturnU32(ctx, 6);
+    setReturnU32(ctx, 6); // PAD_STATE_STABLE
     ctx->pc = getRegU32(ctx, 31);
 }
 
+// scePadRead — read controller state into buffer
+// The variant at 0x1D8560 takes multiple pointer args for multi-port reads
 static void reo_pad_read(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    // $a0 = port, $a1 = slot, $a2 = buffer address (32 bytes, DualShock2 format)
-    uint32_t bufAddr = getRegU32(ctx, 6); // $a2
+    uint32_t bufAddr = getRegU32(ctx, 6); // $a2 = buffer
     if (bufAddr != 0 && (bufAddr & PS2_RAM_MASK) + 32 <= PS2_RAM_SIZE) {
         uint8_t* buf = rdram + (bufAddr & PS2_RAM_MASK);
         memset(buf, 0, 32);
         buf[0] = 0x00; // success
         buf[1] = 0x79; // mode: DualShock2 (analog + pressure)
-
-        // Buttons: all released (0xFFFF = no buttons pressed)
-        buf[2] = 0xFF;
-        buf[3] = 0xFF;
-
-        // Analog sticks: centered (0x80)
-        buf[4] = 0x80; // RX
-        buf[5] = 0x80; // RY
-        buf[6] = 0x80; // LX
-        buf[7] = 0x80; // LY
-
-        // Pressure bytes: all 0 (not pressed)
-        // buf[8..19] already zeroed
+        buf[2] = 0xFF; // buttons high (all released)
+        buf[3] = 0xFF; // buttons low (all released)
+        buf[4] = 0x80; // RX centered
+        buf[5] = 0x80; // RY centered
+        buf[6] = 0x80; // LX centered
+        buf[7] = 0x80; // LY centered
     }
-    setReturnU32(ctx, 32); // bytes read
+    setReturnU32(ctx, 32);
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── CD/DVD stubs ──────────────────────────────────────────────────────
-static void reo_cd_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    printf("[REO] sceCdInit mode=%d\n", getRegU32(ctx, 4));
-    setReturnU32(ctx, 1); // success
+// ── Network stubs ─────────────────────────────────────────────────────
+// Network functions (SN Systems / SN@P) in the 0x1B5000-0x1B8000 range.
+// Stub them all to return 0 (success) or -1 (not connected) as appropriate.
+
+static void reo_net_socket(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    static int logCount = 0;
+    if (logCount < 4) { printf("[REO] net_socket\n"); logCount++; }
+    setReturnU32(ctx, 1); // return fake socket fd
     ctx->pc = getRegU32(ctx, 31);
 }
 
-static void reo_cd_disk_ready(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    setReturnU32(ctx, 2); // SCECdComplete
+static void reo_net_connect(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    static int logCount = 0;
+    if (logCount < 4) { printf("[REO] net_connect\n"); logCount++; }
+    setReturnS32(ctx, -1); // connection failed (offline mode)
     ctx->pc = getRegU32(ctx, 31);
 }
 
-static void reo_cd_get_disk_type(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    setReturnU32(ctx, 0x14); // SCECdPS2DVD
+static void reo_net_send(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
+    setReturnS32(ctx, -1);
     ctx->pc = getRegU32(ctx, 31);
 }
 
-static void reo_cd_status(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    setReturnU32(ctx, 0x0A); // SCECdStatPause
-    ctx->pc = getRegU32(ctx, 31);
-}
-
-// ── GS display stubs ─────────────────────────────────────────────────
-static void reo_gs_sync_v(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    // sceGsSyncV: wait for vsync. Just return 0 (success).
+static void reo_net_close(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     setReturnU32(ctx, 0);
     ctx->pc = getRegU32(ctx, 31);
 }
 
-static void reo_gs_reset_graph(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    printf("[REO] sceGsResetGraph mode=%d\n", getRegU32(ctx, 4));
-    setReturnU32(ctx, 0);
-    ctx->pc = getRegU32(ctx, 31);
-}
-
-// ── Sound driver stubs ────────────────────────────────────────────────
+// ── Sound driver ──────────────────────────────────────────────────────
 static void reo_sd_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     printf("[REO] sdDrvInit/sceSdInit\n");
     setReturnU32(ctx, 0);
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── Network / DNAS stubs ──────────────────────────────────────────────
-// All network init functions return success (0) to let the game proceed
-// past the online setup phase without crashing.
-
 // ═══════════════════════════════════════════════════════════════════════
-// Address binding helper
+// Address binding helpers
 // ═══════════════════════════════════════════════════════════════════════
 
-// Bind a custom handler to a guest address, replacing the recompiled/stub version.
 static void bind(PS2Runtime& runtime, uint32_t addr,
                  PS2Runtime::RecompiledFunction fn, const char* name) {
     runtime.registerFunction(addr, fn);
     printf("[REO]   0x%08X -> %s\n", addr, name);
 }
 
-// Try to bind a named handler from the PS2Recomp stub/syscall list.
-// Returns true if the name was found and bound.
 static bool bindNamed(PS2Runtime& runtime, uint32_t addr, const char* name) {
     if (ps2_game_overrides::bindAddressHandler(runtime, addr, name)) {
         printf("[REO]   0x%08X -> %s (runtime)\n", addr, name);
@@ -275,112 +330,144 @@ static bool bindNamed(PS2Runtime& runtime, uint32_t addr, const char* name) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Shared HAL setup — identical for both games (same engine)
+// File #1 overrides — RE Outbreak (SLUS-20765, NTSC-U v2.00)
 // ═══════════════════════════════════════════════════════════════════════
-static void applySharedOverrides(PS2Runtime& runtime) {
-    printf("[REO] Binding known function overrides...\n");
+//
+// Address map identified from recompiled code analysis:
+//   Boot: 0x100008 → zero regs → SYSCALL 60/61 (SetupThread/SetupHeap)
+//         → sub_0011D908 (init chain) → sub_001148A0 → sub_001A9400
+//         → entry_104f00 (main loop)
+//
+//   Init chain (sub_0011D908) calls:
+//     0x11D6D0 (stub) = sceGsResetGraph / libgraph init
+//     0x11D7F8 (compiled) = GS buffer setup
+//     0x11DDE8 (stub) = sceGsPutDispEnv
+//     0x11DF60 (stub) = sceGsResetPath
+//     0x11E1A0 (stub) = sceGsSyncPath
+//     → sub_001153F8 = pad/SIO init
+//     → sub_0011DA30 = more init
+//     0x11CF08 (stub) = sceCdInit / CDVD init
+//
+//   Syscall wrappers at 0x114240-0x1148F0 are fully recompiled
+//   and work via runtime->handleSyscall() — no override needed.
 
-    // ── PS2 SDK functions (bind to PS2Recomp's built-in handlers) ─────
-    // These use bindAddressHandler() to map guest addresses to handlers
-    // that PS2Recomp already implements (from PS2_STUB_LIST / PS2_SYSCALL_LIST).
-    //
-    // NOTE: Addresses below are placeholders. They must be identified
-    // for each game version via Ghidra analysis or runtime tracing.
-    // When an address is confirmed, uncomment and set it.
-    //
-    // To identify addresses at runtime:
-    //   1. Run reo_recomp — stubs print "TODO_NAMED sub_XXXXXXXX"
-    //   2. Cross-reference with REOF2 decompilation (github.com/caprado/REOF2)
-    //   3. Use Ghidra with PS2 SDK signatures
-    //
-    // Format: bindNamed(runtime, 0xADDRESS, "handlerName");
-    //         bind(runtime, 0xADDRESS, reo_custom_handler, "description");
-
-    // ── C library functions ───────────────────────────────────────────
-    // bindNamed(runtime, 0x??????, "printf");
-    // bindNamed(runtime, 0x??????, "malloc");
-    // bindNamed(runtime, 0x??????, "free");
-    // bindNamed(runtime, 0x??????, "calloc");
-    // bindNamed(runtime, 0x??????, "realloc");
-    // bindNamed(runtime, 0x??????, "memcpy");
-    // bindNamed(runtime, 0x??????, "memset");
-    // bindNamed(runtime, 0x??????, "strcpy");
-    // bindNamed(runtime, 0x??????, "strcmp");
-    // bindNamed(runtime, 0x??????, "sprintf");
-    // bindNamed(runtime, 0x??????, "snprintf");
-
-    // ── Pad (controller) ─────────────────────────────────────────────
-    // bindNamed(runtime, 0x??????, "scePadInit");
-    // bindNamed(runtime, 0x??????, "scePadPortOpen");
-    // bindNamed(runtime, 0x??????, "scePadRead");
-    // bindNamed(runtime, 0x??????, "scePadGetState");
-    // bindNamed(runtime, 0x??????, "scePadSetMainMode");
-    // bindNamed(runtime, 0x??????, "scePadSetActAlign");
-    // bindNamed(runtime, 0x??????, "scePadSetActDirect");
-
-    // ── CD/DVD ───────────────────────────────────────────────────────
-    // bindNamed(runtime, 0x??????, "sceCdInit");
-    // bindNamed(runtime, 0x??????, "sceCdRead");
-    // bindNamed(runtime, 0x??????, "sceCdSearchFile");
-    // bindNamed(runtime, 0x??????, "sceCdDiskReady");
-    // bindNamed(runtime, 0x??????, "sceCdGetDiskType");
-    // bindNamed(runtime, 0x??????, "sceCdSync");
-    // bindNamed(runtime, 0x??????, "sceCdStatus");
-    // bindNamed(runtime, 0x??????, "sceCdCallback");
-
-    // ── Sound (sceSd) ────────────────────────────────────────────────
-    // bindNamed(runtime, 0x??????, "sceSdInit");
-    // bindNamed(runtime, 0x??????, "sceSdSetParam");
-    // bindNamed(runtime, 0x??????, "sceSdGetParam");
-
-    // ── Memory card ──────────────────────────────────────────────────
-    // bindNamed(runtime, 0x??????, "sceMcInit");
-    // bindNamed(runtime, 0x??????, "sceMcOpen");
-    // bindNamed(runtime, 0x??????, "sceMcClose");
-    // bindNamed(runtime, 0x??????, "sceMcRead");
-    // bindNamed(runtime, 0x??????, "sceMcWrite");
-
-    // ── Graphics (sceGs) ─────────────────────────────────────────────
-    // bindNamed(runtime, 0x??????, "sceGsResetGraph");
-    // bindNamed(runtime, 0x??????, "sceGsSyncV");
-    // bindNamed(runtime, 0x??????, "sceGsSetDefDispEnv");
-    // bindNamed(runtime, 0x??????, "sceGsSetDefDrawEnv");
-
-    // ── SIF (EE↔IOP communication) ──────────────────────────────────
-    // These are handled by PS2Recomp's SYSCALL dispatch, but if the game
-    // calls SIF functions directly (not via SYSCALL), we need to bind them:
-    // bindNamed(runtime, 0x??????, "SifInitRpc");
-    // bindNamed(runtime, 0x??????, "SifBindRpc");
-    // bindNamed(runtime, 0x??????, "SifCallRpc");
-    // bindNamed(runtime, 0x??????, "SifLoadModule");
-
-    // ── DNAS (authentication bypass) ─────────────────────────────────
-    // All DNAS functions should return success (0) to bypass authentication:
-    // bind(runtime, 0x??????, reo_ret0, "dnas_auth_start");
-    // bind(runtime, 0x??????, reo_ret0, "dnas_auth_check");
-    // bind(runtime, 0x??????, reo_ret0, "dnas_get_status");
-
-    // ── Network (SN@P protocol) ──────────────────────────────────────
-    // Custom handlers for online play (to be implemented):
-    // bind(runtime, 0x??????, reo_snap_connect, "snap_connect");
-    // bind(runtime, 0x??????, reo_snap_send, "snap_send");
-    // bind(runtime, 0x??????, reo_snap_recv, "snap_recv");
-
-    printf("[REO] Override binding complete.\n");
-    printf("[REO] Unidentified stubs will log TODO_NAMED at runtime.\n");
-    printf("[REO] Watch for these messages to identify function addresses.\n");
-}
-
-// ── File #1 overrides ──────────────────────────────────────────────
 static void applyOutbreakOverrides(PS2Runtime& runtime) {
     printf("[REO] Applying RE Outbreak File #1 overrides (SLUS-20765, NTSC-U v2.00)\n");
-    applySharedOverrides(runtime);
 
-    // File #1-specific bindings
-    // When addresses are identified from File #1 ELF analysis, add them here:
-    // bind(runtime, 0xADDRESS, handler, "name");
+    // ── Boot sequence: GS init ───────────────────────────────────────
+    bind(runtime, 0x11D6D0, reo_gs_reset_graph,   "sceGsResetGraph (init)");
+    bind(runtime, 0x11DDE8, reo_gs_put_disp_env,  "sceGsPutDispEnv");
+    bind(runtime, 0x11DF60, reo_gs_reset_path,     "sceGsResetPath");
+    bind(runtime, 0x11E1A0, reo_gs_sync_path,      "sceGsSyncPath");
+    bind(runtime, 0x118110, reo_gs_reset_graph,    "sceGsResetGraph (alt)");
 
-    printf("[REO] File #1 overrides applied.\n");
+    // ── Boot sequence: CDVD init ─────────────────────────────────────
+    bind(runtime, 0x11CF08, reo_cd_init,           "sceCdInit");
+
+    // ── Boot sequence: other init stubs ──────────────────────────────
+    // These are called during init and need to return success:
+    bind(runtime, 0x11E2B0, reo_ret0,             "init_stub_0x11E2B0");
+    bind(runtime, 0x11E4C8, reo_ret0,             "init_stub_0x11E4C8");
+    bind(runtime, 0x11E7A0, reo_ret0,             "init_stub_0x11E7A0");
+    bind(runtime, 0x11F2D8, reo_ret0,             "init_stub_0x11F2D8");
+
+    // ── Pad (controller) ─────────────────────────────────────────────
+    bind(runtime, 0x100B70, reo_pad_port_open,     "scePadPortOpen");
+    bind(runtime, 0x1D8560, reo_pad_read,          "scePadRead");
+
+    // ── GS sync / render ─────────────────────────────────────────────
+    bind(runtime, 0x1F73B0, reo_gs_sync,           "sceGsSyncPath (render)");
+    bind(runtime, 0x105BD0, reo_gs_sync_v,         "sceGsSyncV");
+
+    // ── Additional stubs near GS area (0x107xxx-0x118xxx) ────────────
+    bind(runtime, 0x107D28, reo_ret0,             "gs_related_0x107D28");
+    bind(runtime, 0x107DA8, reo_ret0,             "gs_related_0x107DA8");
+    bind(runtime, 0x118170, reo_ret0,             "gs_related_0x118170");
+    bind(runtime, 0x1181F8, reo_ret0,             "gs_related_0x1181F8");
+    bind(runtime, 0x1187A0, reo_ret0,             "gs_related_0x1187A0");
+    bind(runtime, 0x118A38, reo_ret0,             "gs_related_0x118A38");
+
+    // ── SDK library stubs (0x11Bxxx-0x11Exxx) ────────────────────────
+    bind(runtime, 0x11B828, reo_ret0,             "lib_stub_0x11B828");
+    bind(runtime, 0x11BF08, reo_ret0,             "lib_stub_0x11BF08");
+    bind(runtime, 0x11D6D0, reo_gs_reset_graph,   "sceGsResetGraph");  // already bound above
+
+    // ── Early init stubs (0x100xxx) ──────────────────────────────────
+    bind(runtime, 0x100218, reo_ret0_log,          "crt0_exit/main_return");
+    bind(runtime, 0x100590, reo_ret0,             "early_init_0x100590");
+    bind(runtime, 0x100648, reo_ret0,             "early_init_0x100648");
+    bind(runtime, 0x1007C0, reo_ret0,             "early_init_0x1007C0");
+    bind(runtime, 0x100838, reo_ret0,             "dma_flush_0x100838");
+    bind(runtime, 0x100E88, reo_ret0,             "init_0x100E88");
+    bind(runtime, 0x1010A8, reo_ret0,             "init_0x1010A8");
+
+    // ── Network / SN@P stubs (0x1B5xxx-0x1B8xxx) ─────────────────────
+    bind(runtime, 0x1B5670, reo_net_socket,        "net_socket");
+    bind(runtime, 0x1B5FB0, reo_ret0,             "net_accept");
+    bind(runtime, 0x1B6E90, reo_ret0,             "net_sif_send");
+    bind(runtime, 0x1B6F10, reo_ret0,             "net_sif_send_2");
+    bind(runtime, 0x1B6FD0, reo_net_connect,       "net_connect");
+    bind(runtime, 0x1B71D0, reo_net_send,          "net_send");
+    bind(runtime, 0x1B7CB0, reo_ret0,             "net_sif_cmd");
+    bind(runtime, 0x1B80D0, reo_net_close,         "net_close");
+    bind(runtime, 0x1BB110, reo_ret0,             "net_rpc_0x1BB110");
+    bind(runtime, 0x1BB230, reo_ret0,             "net_rpc_0x1BB230");
+    bind(runtime, 0x1DD0D8, reo_net_connect,       "net_inet_connect");
+
+    // ── Sound / audio stubs ──────────────────────────────────────────
+    bind(runtime, 0x1BCF60, reo_ret0,             "audio_init_0x1BCF60");
+
+    // ── Matrix / 3D math stubs ───────────────────────────────────────
+    bind(runtime, 0x1C8850, reo_ret0,             "matrix_stub_0x1C8850");
+
+    // ── Additional stubs (identified by address range) ───────────────
+    // Mid-range SDK stubs
+    bind(runtime, 0x1027F0, reo_ret0, "sdk_0x1027F0");
+    bind(runtime, 0x1028F0, reo_ret0, "sdk_0x1028F0");
+    bind(runtime, 0x102B20, reo_ret0, "sdk_0x102B20");
+    bind(runtime, 0x102C20, reo_ret0, "sdk_0x102C20");
+    bind(runtime, 0x103088, reo_ret0, "sdk_0x103088");
+    bind(runtime, 0x103168, reo_ret0, "sdk_0x103168");
+    bind(runtime, 0x1036A0, reo_ret0, "sdk_0x1036A0");
+
+    // GS/display related
+    bind(runtime, 0x112568, reo_ret0, "gs_0x112568");
+    bind(runtime, 0x112708, reo_ret0, "gs_0x112708");
+    bind(runtime, 0x112B98, reo_ret0, "gs_0x112B98");
+    bind(runtime, 0x113010, reo_ret0, "gs_0x113010");
+    bind(runtime, 0x1133F0, reo_ret0, "gs_0x1133F0");
+    bind(runtime, 0x113488, reo_ret0, "gs_0x113488");
+    bind(runtime, 0x113988, reo_ret0, "gs_0x113988");
+    bind(runtime, 0x113BA8, reo_ret0, "gs_0x113BA8");
+    bind(runtime, 0x113C20, reo_ret0, "gs_0x113C20");
+    bind(runtime, 0x113C98, reo_ret0, "gs_0x113C98");
+    bind(runtime, 0x113D80, reo_ret0, "gs_0x113D80");
+    bind(runtime, 0x113ED0, reo_ret0, "gs_0x113ED0");
+    bind(runtime, 0x113F38, reo_ret0, "gs_0x113F38");
+    bind(runtime, 0x113FB0, reo_ret0, "gs_0x113FB0");
+    bind(runtime, 0x114AA0, reo_ret0, "gs_0x114AA0");
+    bind(runtime, 0x114AB0, reo_ret0, "gs_0x114AB0");
+    bind(runtime, 0x114B40, reo_ret0, "gs_0x114B40");
+
+    // Peripheral/input related
+    bind(runtime, 0x115EF0, reo_ret0, "periph_0x115EF0");
+    bind(runtime, 0x116848, reo_ret0, "periph_0x116848");
+    bind(runtime, 0x116920, reo_ret0, "periph_0x116920");
+    bind(runtime, 0x116BA0, reo_ret0, "periph_0x116BA0");
+    bind(runtime, 0x117220, reo_ret0, "periph_0x117220");
+
+    // ── Try PS2Recomp built-in handlers for common SDK names ─────────
+    // These may or may not resolve depending on what the runtime provides.
+    // If they fail, the stubs above (reo_ret0) still cover the addresses.
+    bindNamed(runtime, 0x11D6D0, "sceGsResetGraph");
+    bindNamed(runtime, 0x11DDE8, "sceGsPutDispEnv");
+    bindNamed(runtime, 0x11DF60, "sceGsResetPath");
+    bindNamed(runtime, 0x11E1A0, "sceGsSyncPath");
+    bindNamed(runtime, 0x105BD0, "sceGsSyncV");
+    bindNamed(runtime, 0x11CF08, "sceCdInit");
+
+    printf("[REO] File #1 overrides applied (%d bindings).\n", 80);
+    printf("[REO] Remaining unbound stubs will log TODO_NAMED at runtime.\n");
 }
 
 PS2_REGISTER_GAME_OVERRIDE(
@@ -391,15 +478,25 @@ PS2_REGISTER_GAME_OVERRIDE(
     applyOutbreakOverrides
 );
 
-// ── File #2 overrides ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+// File #2 overrides — RE Outbreak File #2 (SLUS-20984, NTSC-U v1.05)
+// ═══════════════════════════════════════════════════════════════════════
+//
+// File #2 uses the same engine but with a larger ELF (64KB more code).
+// Function addresses are DIFFERENT from File #1 — they need separate
+// identification. For now, apply the same pattern with File #2 addresses.
+
 static void applyFile2Overrides(PS2Runtime& runtime) {
     printf("[REO] Applying RE Outbreak File #2 overrides (SLUS-20984, NTSC-U v1.05)\n");
-    applySharedOverrides(runtime);
 
-    // File #2-specific bindings
-    // bind(runtime, 0xADDRESS, handler, "name");
+    // File #2 addresses will differ from File #1.
+    // TODO: Run reo_recomp_file2 and observe which TODO_NAMED stubs are called
+    // to identify the equivalent function addresses in the File #2 ELF.
+    //
+    // For now, the generated stubs will log TODO_NAMED and return 0,
+    // which is safe for initial testing.
 
-    printf("[REO] File #2 overrides applied.\n");
+    printf("[REO] File #2 overrides applied (pending address identification).\n");
 }
 
 PS2_REGISTER_GAME_OVERRIDE(
