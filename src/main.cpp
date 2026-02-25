@@ -105,10 +105,6 @@ int main(int argc, char* argv[]) {
     }
     printf("[BOOT] SPU2: 48 voices, software mixer → WASAPI\n");
 
-    // Initialize IOP high-level emulation
-    reo::IopHLE iop(memory);
-    printf("[BOOT] IOP: High-level emulation ready\n");
-
     // Initialize input system
     reo::Input input;
     if (!input.init()) {
@@ -120,6 +116,13 @@ int main(int argc, char* argv[]) {
     // Initialize CDVD (file system redirect)
     reo::CDVD cdvd(game_data_path);
     printf("[BOOT] CDVD: Redirected to %s\n", game_data_path.string().c_str());
+
+    // Initialize IOP high-level emulation and wire subsystems
+    reo::IopHLE iop(memory);
+    iop.set_input(&input);
+    iop.set_spu2(&spu2);
+    iop.set_cdvd(&cdvd);
+    printf("[BOOT] IOP: HLE ready (padman→Input, cdvd→CDVD, libsd→SPU2)\n");
 
     // Initialize timer system
     reo::Timer timer;
@@ -144,7 +147,13 @@ int main(int argc, char* argv[]) {
     // Initialize VU interpreters (for microprograms uploaded by the game)
     reo::VUInterpreter vu0(0, memory.vu0_code(), 4096, memory.vu0_data(), 4096);
     reo::VUInterpreter vu1(1, memory.vu1_code(), 16384, memory.vu1_data(), 16384);
-    printf("[BOOT] VU0/VU1: Interpreter mode ready\n");
+
+    // Wire VU1 XGKICK → GS PATH1 (geometry submission pipeline)
+    vu1.set_xgkick_callback([](const void* data, uint32_t max_size, void* user) {
+        auto* gs_ptr = (reo::GSRenderer*)user;
+        gs_ptr->submit_path1(data, max_size);
+    }, &gs);
+    printf("[BOOT] VU0/VU1: Interpreter mode ready (VU1→GS PATH1 wired)\n");
 
     // Initialize kernel thread/semaphore system
     reo::get_kernel().init();

@@ -6,15 +6,17 @@
 
 namespace reo {
 
+// Forward declarations
+class Input;
+class SPU2;
+class CDVD;
+
 /*
  * IOP High-Level Emulation
  *
  * The IOP (I/O Processor) is the PS2's secondary CPU — a MIPS R3000A
  * running at 37.5 MHz with 2 MB of its own RAM. It handles all I/O:
  * controllers, memory cards, CD/DVD, sound, USB, network, HDD.
- *
- * It runs IOP modules (IRX files — ELF format for IOP) and communicates
- * with the EE via SIF (System Interface) using an RPC protocol.
  *
  * Rather than recompiling all the IOP code, we use HLE:
  * intercept the SIF RPC calls from the EE side and provide
@@ -27,7 +29,6 @@ namespace reo {
  *   - cdvdman (disc access)
  *   - libsd (SPU2 sound driver)
  *   - inet/netcnf/smap (network stack)
- *   - dev9 (expansion bay: HDD/network)
  */
 
 // SIF RPC module IDs (for EE→IOP calls)
@@ -41,6 +42,11 @@ constexpr uint32_t SIF_NETCNF    = 0x80000A02;
 class IopHLE {
 public:
     explicit IopHLE(Memory& ee_memory);
+
+    // Attach subsystem references (called during boot)
+    void set_input(Input* input) { m_input = input; }
+    void set_spu2(SPU2* spu2)   { m_spu2 = spu2; }
+    void set_cdvd(CDVD* cdvd)   { m_cdvd = cdvd; }
 
     // SIF RPC call from EE
     void sif_rpc_call(uint32_t module_id, uint32_t func_id,
@@ -63,6 +69,12 @@ private:
     void hle_inet(uint32_t func, uint32_t send, uint32_t recv);
 
     Memory& m_ee_memory;
+    Input* m_input = nullptr;
+    SPU2* m_spu2 = nullptr;
+    CDVD* m_cdvd = nullptr;
+
+    // Memory card state
+    std::string m_mc_save_dir = "saves";
 };
 
 } // namespace reo

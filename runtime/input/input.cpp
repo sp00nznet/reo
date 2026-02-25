@@ -102,13 +102,68 @@ void Input::update_xinput(int port) {
 #endif
 
 void Input::update_keyboard() {
-    // TODO: Keyboard input via GetAsyncKeyState or window messages
-    // Default mapping:
-    //   WASD → Left stick / D-pad
-    //   Arrow keys → Right stick
-    //   Space → Cross, E → Circle, Q → Square, R → Triangle
-    //   1 → L1, 2 → R1, 3 → L2, 4 → R2
-    //   Enter → Start, Backspace → Select
+#ifdef REO_PLATFORM_WINDOWS
+    // If an XInput controller is connected, skip keyboard to avoid conflicts
+    if (m_xinput_connected[0]) return;
+
+    auto& pad = m_pads[0];
+    pad.reset(); // Start with all released
+
+    // Helper: check if key is pressed
+    auto key = [](int vk) -> bool { return (GetAsyncKeyState(vk) & 0x8000) != 0; };
+
+    uint16_t buttons = 0xFFFF;
+
+    // D-pad / movement: WASD
+    if (key('W'))         buttons &= ~PS2_UP;
+    if (key('S'))         buttons &= ~PS2_DOWN;
+    if (key('A'))         buttons &= ~PS2_LEFT;
+    if (key('D'))         buttons &= ~PS2_RIGHT;
+
+    // Face buttons
+    if (key(VK_SPACE))    buttons &= ~PS2_CROSS;     // Space → X (confirm)
+    if (key('E'))         buttons &= ~PS2_CIRCLE;     // E → Circle
+    if (key('Q'))         buttons &= ~PS2_SQUARE;     // Q → Square
+    if (key('R'))         buttons &= ~PS2_TRIANGLE;   // R → Triangle
+
+    // Shoulders and triggers
+    if (key('1'))         buttons &= ~PS2_L1;
+    if (key('2'))         buttons &= ~PS2_R1;
+    if (key('3'))         { buttons &= ~PS2_L2; pad.pressure[10] = 255; }
+    if (key('4'))         { buttons &= ~PS2_R2; pad.pressure[11] = 255; }
+
+    // System
+    if (key(VK_RETURN))   buttons &= ~PS2_START;
+    if (key(VK_BACK))     buttons &= ~PS2_SELECT;
+    if (key('Z'))         buttons &= ~PS2_L3;
+    if (key('X'))         buttons &= ~PS2_R3;
+
+    pad.buttons = buttons;
+
+    // Right stick: arrow keys (for camera control)
+    if (key(VK_LEFT))     pad.right_x = 0x00;
+    if (key(VK_RIGHT))    pad.right_x = 0xFF;
+    if (key(VK_UP))       pad.right_y = 0x00;
+    if (key(VK_DOWN))     pad.right_y = 0xFF;
+
+    // Left stick: WASD mapped to analog as well (for games that use analog)
+    if (key('W'))         pad.left_y = 0x00;
+    if (key('S'))         pad.left_y = 0xFF;
+    if (key('A'))         pad.left_x = 0x00;
+    if (key('D'))         pad.left_x = 0xFF;
+
+    // Set pressure for digital buttons (full press = 255)
+    if (!(buttons & PS2_CROSS))    pad.pressure[6] = 255;
+    if (!(buttons & PS2_CIRCLE))   pad.pressure[5] = 255;
+    if (!(buttons & PS2_SQUARE))   pad.pressure[7] = 255;
+    if (!(buttons & PS2_TRIANGLE)) pad.pressure[4] = 255;
+    if (!(buttons & PS2_L1))       pad.pressure[8] = 255;
+    if (!(buttons & PS2_R1))       pad.pressure[9] = 255;
+    if (!(buttons & PS2_UP))       pad.pressure[2] = 255;
+    if (!(buttons & PS2_DOWN))     pad.pressure[3] = 255;
+    if (!(buttons & PS2_LEFT))     pad.pressure[1] = 255;
+    if (!(buttons & PS2_RIGHT))    pad.pressure[0] = 255;
+#endif
 }
 
 } // namespace reo

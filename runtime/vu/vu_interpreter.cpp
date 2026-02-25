@@ -997,11 +997,11 @@ void VUInterpreter::vu_xgkick(uint32_t inst) {
     uint32_t is = l_is(inst);
     uint32_t addr = data_addr(m_state.vi[is], m_data_size);
 
-    printf("[VU1] XGKICK: addr=0x%04X (vi[%d]=%d)\n", addr, is, m_state.vi[is]);
-
-    // TODO: Submit GIF packet starting at m_data_mem + addr to GS renderer.
-    // The packet is a chain of GIF tags followed by primitive data.
-    // For now, we log and continue — GS rendering integration comes next.
+    // Submit GIF packet to GS renderer via callback
+    if (m_xgkick_cb) {
+        uint32_t max_size = m_data_size - addr;
+        m_xgkick_cb(m_data_mem + addr, max_size, m_xgkick_user);
+    }
 }
 
 } // namespace reo
