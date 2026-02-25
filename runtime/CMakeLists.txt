@@ -22,5 +22,5 @@ if(Vulkan_FOUND)
 endif()
 
 if(WIN32)
-    target_link_libraries(reo_runtime PUBLIC winmm ole32 avrt)
+    target_link_libraries(reo_runtime PUBLIC winmm ole32 avrt user32 gdi32 xinput)
 endif()

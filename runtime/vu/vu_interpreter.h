@@ -42,13 +42,18 @@ struct VUState {
     float acc[4];       // Accumulator (xyzw)
     float q;            // Division/sqrt result
     float p;            // EFU result (VU1 only)
+    float i_reg;        // I register (immediate from upper LOI)
     uint32_t pc;        // Micro program counter
     bool running;       // Currently executing
     int stall_cycles;   // Pipeline stall counter
 
+    // Branch delay slot
+    bool delay_slot;
+    uint32_t delay_pc;
+
     // Status flags
     uint16_t status;    // MAC flags (ZSO per element)
-    uint16_t clip;      // Clipping flags
+    uint16_t clip_flag; // Clipping flags (6 judgement results, shifted)
 
     void reset() {
         for (int i = 0; i < 32; i++) vf[i].clear();
@@ -56,11 +61,14 @@ struct VUState {
         for (int i = 0; i < 4; i++) acc[i] = 0.0f;
         q = 0.0f;
         p = 0.0f;
+        i_reg = 0.0f;
         pc = 0;
         running = false;
         stall_cycles = 0;
+        delay_slot = false;
+        delay_pc = 0;
         status = 0;
-        clip = 0;
+        clip_flag = 0;
     }
 };
 
@@ -91,29 +99,68 @@ private:
 
     // Upper instructions (FMAC)
     void vu_add(uint32_t inst);
+    void vu_addbc(uint32_t inst);
     void vu_sub(uint32_t inst);
+    void vu_subbc(uint32_t inst);
     void vu_mul(uint32_t inst);
+    void vu_mulbc(uint32_t inst);
     void vu_madd(uint32_t inst);
+    void vu_maddbc(uint32_t inst);
     void vu_msub(uint32_t inst);
+    void vu_msubbc(uint32_t inst);
     void vu_max(uint32_t inst);
+    void vu_maxbc(uint32_t inst);
     void vu_min(uint32_t inst);
+    void vu_minbc(uint32_t inst);
     void vu_ftoi(uint32_t inst);
     void vu_itof(uint32_t inst);
+    void vu_abs(uint32_t inst);
+    void vu_clip(uint32_t inst);
+    void vu_opmula(uint32_t inst);
+    void vu_opmsub(uint32_t inst);
 
-    // Lower instructions
+    // Lower instructions — integer
+    void vu_iadd(uint32_t inst);
+    void vu_isub(uint32_t inst);
+    void vu_iaddi(uint32_t inst);
+    void vu_iand(uint32_t inst);
+    void vu_ior(uint32_t inst);
+
+    // Lower instructions — FDIV pipeline
     void vu_div(uint32_t inst);
     void vu_sqrt(uint32_t inst);
     void vu_rsqrt(uint32_t inst);
-    void vu_iadd(uint32_t inst);
-    void vu_isub(uint32_t inst);
-    void vu_iand(uint32_t inst);
-    void vu_ior(uint32_t inst);
+
+    // Lower instructions — load/store
     void vu_ilw(uint32_t inst);
     void vu_isw(uint32_t inst);
     void vu_lq(uint32_t inst);
     void vu_sq(uint32_t inst);
-    void vu_branch(uint32_t inst);
-    void vu_xgkick(uint32_t inst);  // VU1 only
+    void vu_lqi(uint32_t inst);
+    void vu_sqi(uint32_t inst);
+    void vu_lqd(uint32_t inst);
+    void vu_sqd(uint32_t inst);
+
+    // Lower instructions — register transfer
+    void vu_move(uint32_t inst);
+    void vu_mr32(uint32_t inst);
+    void vu_mfir(uint32_t inst);
+    void vu_mtir(uint32_t inst);
+
+    // Lower instructions — branching
+    void vu_branch(uint32_t inst, bool condition, bool link = false);
+    void vu_ibeq(uint32_t inst);
+    void vu_ibne(uint32_t inst);
+    void vu_ibltz(uint32_t inst);
+    void vu_ibgtz(uint32_t inst);
+    void vu_iblez(uint32_t inst);
+    void vu_ibgez(uint32_t inst);
+
+    // Lower instructions — VU1 special
+    void vu_xgkick(uint32_t inst);
+
+    // Helpers
+    void update_mac_flags(float result, int element);
 
     int m_unit_id;
     VUState m_state;
