@@ -1,52 +1,26 @@
 # REO Recompiled Game Build
 #
-# This compiles:
-#   - All 3,831 generated C++ files from ps2xRecomp output
-#   - The function registration table
-#   - Game-specific overrides
-#   - Bootstrap main()
+# Builds TWO executables from PS2Recomp output:
+#   reo_recomp       — RE Outbreak File #1 (SLUS-20765, 3,209 functions)
+#   reo_recomp_file2 — RE Outbreak File #2 (SLUS-20984, 3,525 functions)
 #
-# Against the PS2Recomp runtime library.
+# Both share the bootstrap, overrides, and link against PS2Recomp runtime.
 
 cmake_minimum_required(VERSION 3.20)
 
-# Collect all generated source files
-file(GLOB RECOMP_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/config/output/*.cpp"
-)
-
-# Count them for the user
-list(LENGTH RECOMP_SOURCES RECOMP_COUNT)
-message(STATUS "REO: Found ${RECOMP_COUNT} recompiled source files")
-
-if(RECOMP_COUNT EQUAL 0)
-    message(WARNING "No recompiled source files found in config/output/")
-    message(WARNING "Run ps2xAnalyzer and ps2xRecomp first (see README)")
-    return()
-endif()
-
-# Build the recompiled game executable
-add_executable(reo_recomp
-    reo_bootstrap.cpp
-    overrides/reo_override.cpp
-    ${RECOMP_SOURCES}
-)
-
-# PS2Recomp runtime includes and library
+# PS2Recomp paths (shared between both targets)
 set(PS2RECOMP_DIR "${CMAKE_SOURCE_DIR}/third_party/PS2Recomp")
 set(PS2RECOMP_BUILD "${PS2RECOMP_DIR}/out/build")
 
-target_include_directories(reo_recomp PRIVATE
+set(PS2RECOMP_INCLUDES
     "${PS2RECOMP_DIR}/ps2xRuntime/include"
     "${PS2RECOMP_DIR}/ps2xRecomp/include"
     "${PS2RECOMP_BUILD}/_deps/elfio-src/include"
     "${PS2RECOMP_BUILD}/_deps/fmt-src/include"
     "${PS2RECOMP_BUILD}/_deps/raylib-src/src"
-    "${CMAKE_CURRENT_SOURCE_DIR}/config/output"
 )
 
-# Link PS2Recomp runtime and its dependencies
-target_link_libraries(reo_recomp PRIVATE
+set(PS2RECOMP_LIBS
     "${PS2RECOMP_BUILD}/ps2xRuntime/Release/ps2_runtime.lib"
     "${PS2RECOMP_BUILD}/_deps/raylib-build/raylib/Release/raylib.lib"
     "${PS2RECOMP_BUILD}/_deps/raylib-build/raylib/external/glfw/src/glfw.dir/Release/glfw.lib"
@@ -54,28 +28,58 @@ target_link_libraries(reo_recomp PRIVATE
     "${PS2RECOMP_BUILD}/_deps/libdwarf-build/src/lib/libdwarf/Release/dwarf.lib"
 )
 
-# Windows system libraries needed by raylib/glfw
-if(WIN32)
-    target_link_libraries(reo_recomp PRIVATE
-        opengl32 gdi32 winmm user32 shell32 ole32 advapi32
+# Helper function to set up a recomp target
+function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
+    file(GLOB RECOMP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/config/${OUTPUT_DIR}/*.cpp")
+    list(LENGTH RECOMP_SOURCES RECOMP_COUNT)
+    message(STATUS "REO [${TARGET_NAME}]: Found ${RECOMP_COUNT} recompiled source files in ${OUTPUT_DIR}")
+
+    if(RECOMP_COUNT EQUAL 0)
+        message(WARNING "No recompiled source files found in config/${OUTPUT_DIR}/")
+        message(WARNING "Run ps2xAnalyzer and ps2xRecomp first (see README)")
+        return()
+    endif()
+
+    add_executable(${TARGET_NAME}
+        reo_bootstrap.cpp
+        overrides/reo_override.cpp
+        ${RECOMP_SOURCES}
     )
-endif()
 
-# C++20 required for PS2Recomp runtime
-target_compile_features(reo_recomp PRIVATE cxx_std_20)
-
-# MSVC specific: disable some warnings in generated code, enable SSE4.1
-if(MSVC)
-    target_compile_options(reo_recomp PRIVATE
-        /W0           # Disable warnings for generated code
-        /bigobj       # Generated files can be large
-        /MP8          # Parallel compilation (8 threads, avoids file locking)
-        /O2           # Optimize
+    target_include_directories(${TARGET_NAME} PRIVATE
+        ${PS2RECOMP_INCLUDES}
+        "${CMAKE_CURRENT_SOURCE_DIR}/config/${OUTPUT_DIR}"
     )
-endif()
 
-target_compile_definitions(reo_recomp PRIVATE
-    _CRT_SECURE_NO_WARNINGS
-    NOMINMAX
-    WIN32_LEAN_AND_MEAN
-)
+    target_link_libraries(${TARGET_NAME} PRIVATE ${PS2RECOMP_LIBS})
+
+    if(WIN32)
+        target_link_libraries(${TARGET_NAME} PRIVATE
+            opengl32 gdi32 winmm user32 shell32 ole32 advapi32
+        )
+    endif()
+
+    target_compile_features(${TARGET_NAME} PRIVATE cxx_std_20)
+
+    if(MSVC)
+        target_compile_options(${TARGET_NAME} PRIVATE
+            /W0           # Disable warnings for generated code
+            /bigobj       # Generated files can be large
+            /MP8          # Parallel compilation
+            /O2           # Optimize
+        )
+    endif()
+
+    target_compile_definitions(${TARGET_NAME} PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+        NOMINMAX
+        WIN32_LEAN_AND_MEAN
+        ${GAME_DEFINE}
+    )
+endfunction()
+
+# ── File #1: RE Outbreak (SLUS-20765) ──────────────────────────────
+add_recomp_target(reo_recomp "output" "REO_GAME_FILE1")
+
+# ── File #2: RE Outbreak File #2 (SLUS-20984) ─────────────────────
+add_recomp_target(reo_recomp_file2 "output_file2" "REO_GAME_FILE2")

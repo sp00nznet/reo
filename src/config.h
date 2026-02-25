@@ -3,15 +3,36 @@
 #include <string>
 
 #define REO_VERSION_MAJOR 0
-#define REO_VERSION_MINOR 1
+#define REO_VERSION_MINOR 2
 #define REO_VERSION_PATCH 0
-#define REO_VERSION_STRING "0.1.0"
+#define REO_VERSION_STRING "0.2.0"
 
 namespace reo {
 
+// Which game to run
+enum class GameTitle {
+    Outbreak,   // RE Outbreak File #1 (SLUS-20765)
+    File2,      // RE Outbreak File #2 (SLUS-20984)
+};
+
+struct GameInfo {
+    GameTitle title;
+    const char* display_name;
+    const char* elf_name;       // e.g. "SLUS_207.65" or "SLUS_209.84"
+    const char* serial;         // e.g. "SLUS-20765"
+    uint32_t entry_point;
+    const char* default_data_path;
+};
+
+// Lookup tables for supported games
+const GameInfo& get_game_info(GameTitle title);
+
 struct Config {
-    // Paths
-    std::string game_data_path = "game_data";
+    // Game selection
+    GameTitle game = GameTitle::Outbreak;
+
+    // Paths (auto-set from game selection if not overridden)
+    std::string game_data_path;  // empty = use default for selected game
     std::string save_path = "saves";
 
     // Display
@@ -36,6 +57,9 @@ struct Config {
 
     bool load(int argc, char* argv[]);
     bool save() const;
+
+    // Resolved game info (set after load())
+    const GameInfo& game_info() const { return get_game_info(game); }
 };
 
 } // namespace reo

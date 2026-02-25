@@ -40,6 +40,7 @@ recomp_output/
 # Extracted game data (generated from ISO)
 extracted/
 game_data/
+game_data_file2/
 
 # Dependencies (fetched by build)
 deps/
@@ -57,6 +58,24 @@ desktop.ini
 *.swo
 *~
 recomp/config/output/
+recomp/config/output_file2/
 third_party/PS2Recomp/
 game_data/
+game_data_file2/
 game_data_ntsc/
+
+# ISO archives and disc images
+resident-evil-outbreak-file-2/
+resident-evil-outbreak-file-2.zip
+*.cue
+*.CUE
+*.torrent
+
+# BIOS files
+SCPH-*
+
+# Save data
+saves/
+
+# Claude local settings
+.claude/

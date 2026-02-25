@@ -24,7 +24,7 @@
 
 namespace fs = std::filesystem;
 
-static void print_banner() {
+static void print_banner(const reo::GameInfo& info) {
     printf("\n");
     printf("  ██████╗ ███████╗ ██████╗ \n");
     printf("  ██╔══██╗██╔════╝██╔═══██╗\n");
@@ -33,30 +33,40 @@ static void print_banner() {
     printf("  ██║  ██║███████╗╚██████╔╝\n");
     printf("  ╚═╝  ╚═╝╚══════╝ ╚═════╝ \n");
     printf("\n");
-    printf("  Resident Evil Outbreak: Recompiled\n");
-    printf("  v%s\n", REO_VERSION_STRING);
+    printf("  %s: Recompiled\n", info.display_name);
+    printf("  v%s  [%s]\n", REO_VERSION_STRING, info.serial);
     printf("  Don't let the memory of Raccoon City die.\n");
     printf("\n");
 }
 
 int main(int argc, char* argv[]) {
-    print_banner();
-
-    // Load configuration
+    // Load configuration (includes game selection)
     reo::Config config;
     if (!config.load(argc, argv)) {
-        fprintf(stderr, "Failed to load configuration.\n");
         return 1;
     }
+
+    const auto& info = config.game_info();
+    print_banner(info);
 
     // Verify game data exists
     fs::path game_data_path = config.game_data_path;
     if (!fs::exists(game_data_path)) {
         fprintf(stderr, "Game data not found at: %s\n", game_data_path.string().c_str());
-        fprintf(stderr, "Run: reo-extract <path-to-Outbreak.iso> to extract game files.\n");
+        fprintf(stderr, "Run: reo-extract <path-to-ISO> %s\n", info.default_data_path);
         return 1;
     }
 
+    // Verify ELF exists
+    fs::path elf_path = game_data_path / info.elf_name;
+    if (!fs::exists(elf_path)) {
+        fprintf(stderr, "ELF not found: %s\n", elf_path.string().c_str());
+        return 1;
+    }
+
+    printf("[BOOT] Game: %s (%s)\n", info.display_name, info.serial);
+    printf("[BOOT] ELF:  %s (entry 0x%08X)\n", info.elf_name, info.entry_point);
+    printf("[BOOT] Data: %s\n", game_data_path.string().c_str());
     printf("[BOOT] Initializing PS2 subsystems...\n");
 
     // Initialize the PS2 memory map (32MB main RAM + MMIO regions)

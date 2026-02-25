@@ -1,16 +1,23 @@
 # REO - Resident Evil Outbreak: Recompiled
 
-**A static recompilation of Resident Evil Outbreak for modern Windows.**
+**A static recompilation of Resident Evil Outbreak (File #1 + File #2) for modern Windows.**
 
 No emulator. No compromises. Just Raccoon City, running natively on your PC — alone or online.
 
-> **Fan project.** Not affiliated with Capcom, Sony, or obsrv.org. You need a legally owned copy of the game.
+> **Fan project.** Not affiliated with Capcom, Sony, or obsrv.org. You need legally owned copies of the games.
 
 ---
 
 ## What Is This?
 
-REO takes the original PS2 binary of Resident Evil Outbreak (SLUS-20765) and translates it — instruction by instruction — into native x86-64 code that runs directly on Windows 11. This is **static recompilation**, the same technique behind projects like [Zelda 64: Recompiled](https://github.com/N64Recomp/N64Recomp).
+REO takes the original PS2 binaries of both Resident Evil Outbreak games and translates them — instruction by instruction — into native x86-64 code that runs directly on Windows 11. This is **static recompilation**, the same technique behind projects like [Zelda 64: Recompiled](https://github.com/N64Recomp/N64Recomp).
+
+| Game | Serial | Functions | Recompiled |
+|------|--------|-----------|------------|
+| RE Outbreak | SLUS-20765 | 3,461 | 3,209 functions → 3,829 C++ files |
+| RE Outbreak: File #2 | SLUS-20984 | 3,525 | 3,525 functions → 3,892 C++ files |
+
+Both games share the same engine and build against the same runtime HAL.
 
 The PS2 was a wild machine. The Emotion Engine, two Vector Units, a fixed-function Graphics Synthesizer, a sound chip with its own CPU, and a network stack built for 2003-era Japanese broadband. Every piece of that hardware gets replaced with modern equivalents:
 
@@ -55,11 +62,11 @@ REO connects to those same community servers. Play with friends, matchmake with 
                                          └─────────┘           └────────────┘
 ```
 
-1. **Extract** the ELF binary (`SLUS_207.65`) from your legal game disc/ISO
+1. **Extract** the ELF binary from your legal game disc/ISO (File #1 or File #2)
 2. **Analyze** it with ps2xAnalyzer to map functions, relocations, and symbols
 3. **Recompile** MIPS R5900 instructions to C++ with ps2xRecomp
 4. **Link** against the REO runtime — our replacement for all PS2 hardware
-5. **Play** natively on Windows
+5. **Play** natively on Windows — choose which game with `--game file1` or `--game file2`
 
 ### The Runtime (Hardware Abstraction Layer)
 
@@ -81,14 +88,21 @@ reo/
 ├── CMakeLists.txt           # Top-level build
 ├── README.md                # You are here
 │
+├── game_data/               # Extracted File #1 data (SLUS_207.65 + assets)
+├── game_data_file2/         # Extracted File #2 data (SLUS_209.84 + assets)
+│
 ├── tools/                   # Build-time tools
-│   ├── iso_extract/         # Extract game files from ISO
+│   ├── iso_extract/         # Extract game files from ISO/BIN
 │   ├── elf_analyze/         # ELF analysis and symbol extraction
 │   └── vu_disasm/           # VU microcode disassembler
 │
 ├── recomp/                  # Static recompilation layer
-│   ├── config/              # PS2Recomp TOML configs for RE Outbreak
-│   ├── overrides/           # Game-specific function overrides (C++)
+│   ├── config/
+│   │   ├── outbreak.toml        # PS2Recomp config — File #1
+│   │   ├── outbreak_file2.toml  # PS2Recomp config — File #2
+│   │   ├── output/              # 3,829 recompiled C++ files (File #1)
+│   │   └── output_file2/        # 3,892 recompiled C++ files (File #2)
+│   ├── overrides/           # Game-specific function overrides (both games)
 │   └── patches/             # Binary patches and fixups
 │
 ├── runtime/                 # Hardware Abstraction Layer
@@ -126,7 +140,7 @@ reo/
 
 ## Building
 
-> **Prerequisites:** Visual Studio 2022, CMake 3.20+, Vulkan SDK, a legally owned RE Outbreak NTSC-U ISO (SLUS-20765)
+> **Prerequisites:** Visual Studio 2022, CMake 3.20+, Vulkan SDK, legally owned RE Outbreak NTSC-U ISO(s)
 
 ```bash
 # Clone
@@ -146,33 +160,49 @@ cd ../..
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 
-# Extract game data from your ISO
-./build/tools/iso_extract/Release/reo-extract.exe "YourOutbreak.iso" game_data
-
-# Analyze and recompile the ELF (MIPS → C++)
+# ── File #1 (SLUS-20765) ──
+./build/tools/iso_extract/Release/reo-extract.exe "Outbreak.iso" game_data
 ./third_party/PS2Recomp/out/build/ps2xAnalyzer/Release/ps2_analyzer.exe \
     game_data/SLUS_207.65 recomp/config/outbreak.toml
 ./third_party/PS2Recomp/out/build/ps2xRecomp/Release/ps2_recomp.exe \
     recomp/config/outbreak.toml
 
-# Run (not yet functional — runtime bridge in progress)
-./build/Release/reo.exe
+# ── File #2 (SLUS-20984) ──
+./build/tools/iso_extract/Release/reo-extract.exe "OutbreakFile2.iso" game_data_file2
+./third_party/PS2Recomp/out/build/ps2xAnalyzer/Release/ps2_analyzer.exe \
+    game_data_file2/SLUS_209.84 recomp/config/outbreak_file2.toml
+./third_party/PS2Recomp/out/build/ps2xRecomp/Release/ps2_recomp.exe \
+    recomp/config/outbreak_file2.toml
+
+# Rebuild with recompiled code
+cmake --build build --config Release
+
+# Run (choose game)
+./build/recomp/Release/reo_recomp.exe --game file1
+./build/recomp/Release/reo_recomp_file2.exe --game file2
 ```
 
 ### Current Status
 
-The recompilation pipeline is **working**:
-- ISO extraction: all game files extracted (ELF, IOP modules, data archives)
-- ELF analysis: 3,461 functions identified, 252 auto-skipped (HW I/O)
-- MIPS → C++: 3,209 functions translated to native x86-64 (66 MB of C++)
-- Next: bridge the recompiled code to our runtime HAL
+The recompilation pipeline is **working for both games**:
+
+| | File #1 | File #2 |
+|---|---|---|
+| ISO extraction | all files extracted | all files extracted |
+| ELF analysis | 3,461 functions | 3,525 functions |
+| MIPS → C++ | 3,209 → 3,829 files (66 MB) | 3,525 → 3,892 files (68 MB) |
+| Build | compiles clean | compiles clean |
+
+Next: bridge the recompiled code to the runtime HAL
 
 ## Roadmap
 
 ### Phase 1 — Foundation (Current)
 - [x] Project structure and build system
-- [x] ISO extraction and ELF analysis tooling (working! extracts all files)
-- [x] PS2Recomp integration — **3,461 functions analyzed, 3,209 recompiled to C++**
+- [x] ISO extraction and ELF analysis tooling (working for both games)
+- [x] PS2Recomp integration — **File #1: 3,461 functions, File #2: 3,525 functions**
+- [x] Dual-game build system (reo_recomp + reo_recomp_file2)
+- [x] Game selection via --game flag and auto-detected data paths
 - [x] Basic memory map and CPU context runtime (32MB RAM, MMIO, scratchpad)
 - [ ] Bridge recompiled code to REO runtime (connect PS2Recomp output to our HAL)
 - [ ] Boot to black screen (proof of life)
@@ -204,7 +234,6 @@ The recompilation pipeline is **working**:
 - [ ] Modern graphics enhancements
 - [ ] Keyboard+mouse controls
 - [ ] Steam Deck / Linux support (stretch goal)
-- [ ] File #2 support (stretch goal)
 
 ## Technical References
 
@@ -220,7 +249,7 @@ The recompilation pipeline is **working**:
 
 ## Legal
 
-This project contains **no copyrighted game code or assets**. You must provide your own legally obtained copy of Resident Evil Outbreak (SLUS-20765).
+This project contains **no copyrighted game code or assets**. You must provide your own legally obtained copies of Resident Evil Outbreak (SLUS-20765) and/or RE Outbreak: File #2 (SLUS-20984).
 
 Resident Evil is a trademark of Capcom. PlayStation is a trademark of Sony. This is an independent fan project created for preservation and educational purposes.
 

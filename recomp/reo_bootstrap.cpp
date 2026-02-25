@@ -1,30 +1,46 @@
 /*
  * REO Bootstrap — Main entry point for running recompiled RE Outbreak
  *
- * This program:
- *   1. Initializes the PS2Recomp runtime
- *   2. Loads the RE Outbreak ELF into guest memory
- *   3. Registers all 3,209 recompiled functions
- *   4. Applies game-specific overrides
- *   5. Starts execution at the ELF entry point (0x00100008)
+ * Supports both games:
+ *   - RE Outbreak File #1 (SLUS-20765): 3,209 recompiled functions
+ *   - RE Outbreak File #2 (SLUS-20984): 3,525 recompiled functions
  *
  * Build: compile all generated .cpp files + this bootstrap against
  *        PS2Recomp's runtime library.
+ *
+ * Usage:
+ *   reo_recomp --game file1   (or --game file2)
+ *   reo_recomp --elf <path> --data <path>   (manual override)
  */
 
 #include "ps2_runtime.h"
 #include "ps2_recompiled_functions.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <filesystem>
 
 namespace fs = std::filesystem;
 
-// Defined in the generated register_functions.cpp
+// Function registration — defined in each game's generated register_functions.cpp
+// The active build target (file1 or file2) provides the implementation.
 extern void registerAllFunctions(PS2Runtime& runtime);
 
-static void print_banner() {
+struct GameDef {
+    const char* name;
+    const char* elf_name;
+    const char* serial;
+    const char* default_data;
+    uint32_t entry_point;
+};
+
+static const GameDef s_games[] = {
+    { "Resident Evil Outbreak",          "SLUS_207.65", "SLUS-20765", "game_data",       0x00100008 },
+    { "Resident Evil Outbreak: File #2", "SLUS_209.84", "SLUS-20984", "game_data_file2", 0x00100008 },
+};
+
+static void print_banner(const GameDef& g) {
     printf("\n");
     printf("  ██████╗ ███████╗ ██████╗ \n");
     printf("  ██╔══██╗██╔════╝██╔═══██╗\n");
@@ -33,35 +49,59 @@ static void print_banner() {
     printf("  ██║  ██║███████╗╚██████╔╝\n");
     printf("  ╚═╝  ╚═╝╚══════╝ ╚═════╝ \n");
     printf("\n");
-    printf("  Resident Evil Outbreak: Recompiled\n");
-    printf("  Static recompilation — no emulator\n");
+    printf("  %s: Recompiled\n", g.name);
+    printf("  [%s]  Static recompilation — no emulator\n", g.serial);
     printf("  Don't let the memory of Raccoon City die.\n");
     printf("\n");
 }
 
 int main(int argc, char* argv[]) {
-    print_banner();
-
-    // Determine paths
-    std::string elf_path = "game_data/SLUS_207.65";
-    std::string game_data = "game_data";
+    // Defaults — selected game determines paths
+    int game_idx = -1;  // -1 = auto-detect from build target
+    std::string elf_path;
+    std::string game_data;
 
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--elf") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "--game") == 0 && i + 1 < argc) {
+            const char* g = argv[++i];
+            if (strcmp(g, "file1") == 0 || strcmp(g, "outbreak") == 0 || strcmp(g, "1") == 0)
+                game_idx = 0;
+            else if (strcmp(g, "file2") == 0 || strcmp(g, "2") == 0)
+                game_idx = 1;
+            else {
+                fprintf(stderr, "[REO] Unknown game: %s (use 'file1' or 'file2')\n", g);
+                return 1;
+            }
+        } else if (strcmp(argv[i], "--elf") == 0 && i + 1 < argc) {
             elf_path = argv[++i];
         } else if (strcmp(argv[i], "--data") == 0 && i + 1 < argc) {
             game_data = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0) {
-            printf("Usage: reo [--elf <path>] [--data <path>]\n");
-            printf("  --elf   Path to SLUS_207.65 (default: game_data/SLUS_207.65)\n");
-            printf("  --data  Path to extracted game data (default: game_data/)\n");
+            printf("Usage: reo_recomp [--game file1|file2] [--elf <path>] [--data <path>]\n");
+            printf("  --game   Which game to run: file1 or file2 (auto-detected if not set)\n");
+            printf("  --elf    Path to game ELF (default: auto from game selection)\n");
+            printf("  --data   Path to extracted game data (default: auto from game selection)\n");
             return 0;
         }
     }
 
+    // Auto-detect game from build target (compile-time define)
+#if defined(REO_GAME_FILE2)
+    if (game_idx < 0) game_idx = 1;
+#else
+    if (game_idx < 0) game_idx = 0;
+#endif
+
+    const GameDef& g = s_games[game_idx];
+    print_banner(g);
+
+    // Resolve paths
+    if (game_data.empty()) game_data = g.default_data;
+    if (elf_path.empty())  elf_path = std::string(game_data) + "/" + g.elf_name;
+
     if (!fs::exists(elf_path)) {
         fprintf(stderr, "[REO] ELF not found: %s\n", elf_path.c_str());
-        fprintf(stderr, "[REO] Run reo-extract on your Outbreak ISO first.\n");
+        fprintf(stderr, "[REO] Run: reo-extract <ISO> %s\n", g.default_data);
         return 1;
     }
 
@@ -72,7 +112,7 @@ int main(int argc, char* argv[]) {
     printf("[BOOT] Initializing PS2 runtime...\n");
     PS2Runtime runtime;
 
-    if (!runtime.initialize("RE Outbreak: Recompiled")) {
+    if (!runtime.initialize(g.name)) {
         fprintf(stderr, "[BOOT] Failed to initialize runtime\n");
         return 1;
     }
@@ -86,7 +126,6 @@ int main(int argc, char* argv[]) {
     paths.mcRoot = "saves";
     PS2Runtime::setIoPaths(paths);
 
-    // Create save directory
     fs::create_directories("saves");
 
     // Load the ELF into guest memory
@@ -96,16 +135,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Register all recompiled functions (3,209 functions from PS2Recomp output)
+    // Register all recompiled functions
     printf("[BOOT] Registering recompiled functions...\n");
     registerAllFunctions(runtime);
     printf("[BOOT] All functions registered.\n");
 
-    // The game override system will auto-apply our RE Outbreak overrides
-    // (registered via PS2_REGISTER_GAME_OVERRIDE in reo_override.cpp)
-
     // Begin execution
-    printf("[BOOT] Starting execution at entry point 0x00100008...\n");
+    printf("[BOOT] Starting execution at entry point 0x%08X...\n", g.entry_point);
     printf("[BOOT] ========================================\n\n");
 
     runtime.run();
