@@ -93,6 +93,13 @@ public:
     VUState& state() { return m_state; }
     const VUState& state() const { return m_state; }
 
+    // XGKICK callback — called when VU1 submits a GIF packet via PATH1
+    using XgkickCallback = void(*)(const void* data, uint32_t max_size, void* user);
+    void set_xgkick_callback(XgkickCallback cb, void* user) {
+        m_xgkick_cb = cb;
+        m_xgkick_user = user;
+    }
+
 private:
     void execute_upper(uint32_t instruction);
     void execute_lower(uint32_t instruction);
@@ -161,14 +168,6 @@ private:
 
     // Helpers
     void update_mac_flags(float result, int element);
-
-    // XGKICK callback — called when VU1 submits a GIF packet via PATH1
-    // The callback receives a pointer to the GIF packet in VU data memory and its max size.
-    using XgkickCallback = void(*)(const void* data, uint32_t max_size, void* user);
-    void set_xgkick_callback(XgkickCallback cb, void* user) {
-        m_xgkick_cb = cb;
-        m_xgkick_user = user;
-    }
 
     XgkickCallback m_xgkick_cb = nullptr;
     void* m_xgkick_user = nullptr;

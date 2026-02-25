@@ -372,8 +372,7 @@ void GSRenderer::process_reglist_data(const GIFTag& tag, const uint8_t* data) {
 
 void GSRenderer::write_internal_reg(uint8_t reg, uint64_t value) {
     switch (reg) {
-    case GIF_REG_PRIM:
-    case 0x00: {
+    case GIF_REG_PRIM: {
         // PRIM register: primitive type and drawing attributes
         m_draw.prim_type = (GSPrimType)(value & 0x7);
         m_draw.gouraud   = (value >> 3) & 1;
