@@ -6,10 +6,14 @@
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"
 #include <cstdio>
+#include <chrono>
 
 // Function: sub_001BAA00
 // Address: 0x1baa00 - 0x1baaf0
 void sub_001BAA00_0x1baa00(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
+    static int _fc = 0;
+    auto _ft0 = std::chrono::steady_clock::now();
+    auto _ftprev = _ft0;
 
     ctx->pc = 0x1baa00u;
 
@@ -169,7 +173,8 @@ label_1baa30:
     }
     ctx->pc = 0x1BAA80u;
 label_1baa80:
-    { static int c = 0; if (c < 5) { printf("[LOOP] Game loop body (label_1baa80) frame=%d a0(r4)=%d\n", c, GPR_S32(ctx, 4)); c++; } }
+    _ft0 = std::chrono::steady_clock::now();
+    _ftprev = _ft0;
     // 0x1baa80: 0xc06eabc
     ctx->pc = 0x1BAA80u;
     SET_GPR_U32(ctx, 31, 0x1BAA88u);
@@ -179,7 +184,7 @@ label_1baa80:
         sub_001BAAF0_0x1baaf0(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1BAA88u; }
     }
-    { static int c = 0; if (c < 20) { printf("[ML] after sub_001BAAF0(render), pc=0x%08X\n", ctx->pc); fflush(stdout); c++; } }
+    { auto _tn = std::chrono::steady_clock::now(); if (_fc < 5) { printf("[ML-T] BAAF0(render): %lld ms\n", (long long)std::chrono::duration_cast<std::chrono::milliseconds>(_tn - _ftprev).count()); } _ftprev = _tn; }
     if (ctx->pc != 0x1BAA88u) { return; }
     ctx->pc = 0x1BAA88u;
     // 0x1baa88: 0x3c010032
@@ -217,7 +222,7 @@ label_1baa80:
         sub_001A9180_0x1a9180(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1BAAB0u; }
     }
-    { static int c = 0; if (c < 20) { printf("[ML] after sub_001A9180(vsync?), pc=0x%08X\n", ctx->pc); fflush(stdout); c++; } }
+    { auto _tn = std::chrono::steady_clock::now(); if (_fc < 5) { printf("[ML-T] A9180(vsync): %lld ms\n", (long long)std::chrono::duration_cast<std::chrono::milliseconds>(_tn - _ftprev).count()); } _ftprev = _tn; }
     if (ctx->pc != 0x1BAAB0u) { return; }
     ctx->pc = 0x1BAAB0u;
     // 0x1baab0: 0xc04491c
@@ -231,7 +236,7 @@ label_1baa80:
         sub_00112470_0x112470(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1BAAB8u; }
     }
-    { static int c = 0; if (c < 20) { printf("[ML] after sub_00112470, pc=0x%08X\n", ctx->pc); fflush(stdout); c++; } }
+    { auto _tn = std::chrono::steady_clock::now(); if (_fc < 5) { printf("[ML-T] 112470(update): %lld ms\n", (long long)std::chrono::duration_cast<std::chrono::milliseconds>(_tn - _ftprev).count()); } _ftprev = _tn; }
     if (ctx->pc != 0x1BAAB8u) { return; }
     ctx->pc = 0x1BAAB8u;
     // 0x1baab8: 0x3c010031
@@ -248,7 +253,7 @@ label_1baa80:
         sub_001AF5C0_0x1af5c0(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1BAAC4u; }
     }
-    { static int c = 0; if (c < 20) { printf("[ML] after sub_001AF5C0, pc=0x%08X v0=%d\n", ctx->pc, GPR_S32(ctx, 2)); fflush(stdout); c++; } }
+    { auto _tn = std::chrono::steady_clock::now(); if (_fc < 5) { printf("[ML-T] AF5C0: %lld ms\n", (long long)std::chrono::duration_cast<std::chrono::milliseconds>(_tn - _ftprev).count()); } _ftprev = _tn; }
     if (ctx->pc != 0x1BAAC4u) { return; }
     ctx->pc = 0x1BAAC4u;
     // 0x1baac4: 0x10400003
@@ -283,7 +288,7 @@ label_1baad4:
         sub_001B7CB0_0x1b7cb0(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1BAADCu; }
     }
-    { static int c = 0; if (c < 20) { printf("[ML] after sub_001B7CB0, pc=0x%08X → frame done\n", ctx->pc); fflush(stdout); c++; } }
+    { auto _tn = std::chrono::steady_clock::now(); if (_fc < 5) { auto _total = std::chrono::duration_cast<std::chrono::milliseconds>(_tn - _ft0).count(); printf("[ML-T] B7CB0: %lld ms | TOTAL: %lld ms\n", (long long)std::chrono::duration_cast<std::chrono::milliseconds>(_tn - _ftprev).count(), (long long)_total); } _ftprev = _tn; _fc++; }
     if (ctx->pc != 0x1BAADCu) { return; }
     ctx->pc = 0x1BAADCu;
 label_1baadc:
