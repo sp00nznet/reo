@@ -137,7 +137,13 @@ void sub_001D1FC0_0x1d1fc0(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
     SET_GPR_U32(ctx, 2, ((uint32_t)30 << 16));
     // 0x1d2028: 0x202d
     ctx->pc = 0x1d2028u;
-    SET_GPR_U64(ctx, 4, (uint64_t)GPR_U64(ctx, 0) + (uint64_t)GPR_U64(ctx, 0));
+    // REO: Set a0=1 instead of 0 to trigger data processing path in CCB90.
+    // Original code sets a0=0 (poll mode), but the data processing happens
+    // when entry_1d2280 calls CCB90 with a0=1-6 (via IOP callbacks).
+    // Since IOP callbacks never fire, we substitute here.
+    { static int callN = 0; callN++;
+      SET_GPR_U64(ctx, 4, (callN <= 6) ? (uint64_t)callN : 0);
+    }
     // 0x1d202c: 0x34422740
     ctx->pc = 0x1d202cu;
     SET_GPR_U32(ctx, 2, OR32(GPR_U32(ctx, 2), 10048));
