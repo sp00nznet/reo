@@ -55,10 +55,11 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
     if (!snapshotLoaded && frameCount == 5) {
         snapshotLoaded = true;
 
-        // Load 4MB game data at PCSX2's base address (0xAEA3C0).
-        // The state snapshots contain pointers to this address range.
+        // Load game data at PCSX2's base address (0xAEA3C0).
+        // Try main menu (8MB) first, then 4MB, then 1MB snapshot.
         uint32_t pcsx2Base = 0xAEA3C0;
-        FILE* f = fopen("tools/ps2_debug/pcsx2_snapshot_4mb.bin", "rb");
+        FILE* f = fopen("tools/ps2_debug/pcsx2_mainmenu_8mb.bin", "rb");
+        if (!f) f = fopen("tools/ps2_debug/pcsx2_snapshot_4mb.bin", "rb");
         if (!f) f = fopen("tools/ps2_debug/pcsx2_snapshot_gamedata.bin", "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
@@ -75,13 +76,11 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         }
 
         // Inject state regions
-        // Inject selective state. Skip 0x29F600-0x29FE00 (display list state)
-        // because it contains PCSX2-specific DMA chain pointers.
-        // Instead, inject only safe configuration values.
-        struct { const char* file; uint32_t addr; uint32_t size; } regions[] = {
-            {"tools/ps2_debug/pcsx2_snapshot_324000.bin", 0x324000, 0x500},
-            {"tools/ps2_debug/pcsx2_snapshot_340000.bin", 0x340000, 0x3000},
-            {"tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100},
+        // Inject state regions (prefer main menu snapshots)
+        struct { const char* file; const char* fallback; uint32_t addr; uint32_t size; } regions[] = {
+            {"tools/ps2_debug/pcsx2_mainmenu_324000.bin", "tools/ps2_debug/pcsx2_snapshot_324000.bin", 0x324000, 0x500},
+            {"tools/ps2_debug/pcsx2_mainmenu_340000.bin", "tools/ps2_debug/pcsx2_snapshot_340000.bin", 0x340000, 0x3000},
+            {"tools/ps2_debug/pcsx2_mainmenu_236700.bin", "tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100},
         };
 
         // Also set specific safe values from the 29F600 region
@@ -99,6 +98,7 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         wr32s(0x29FA10, 1);  // all systems ready
         for (auto& r : regions) {
             FILE* rf = fopen(r.file, "rb");
+            if (!rf && r.fallback) rf = fopen(r.fallback, "rb");
             if (rf) {
                 uint32_t rp = r.addr & PS2_RAM_MASK;
                 if (rp + r.size <= PS2_RAM_SIZE) {
@@ -108,6 +108,36 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
                 fclose(rf);
             }
         }
+        // Inject PCSX2 display list data into REO's display list buffers
+        // PCSX2 uses buffers at 0x010B23C0/0x011323C0, REO uses 0x700000/0x780000
+        // We also need to allocate space at the PCSX2 addresses and copy there
+        // since the display list entries contain absolute pointers.
+        for (int bi = 0; bi < 2; bi++) {
+            char dlname[128];
+            snprintf(dlname, sizeof(dlname), "tools/ps2_debug/pcsx2_displaylist_%d.bin", bi);
+            FILE* dlf = fopen(dlname, "rb");
+            if (dlf) {
+                fseek(dlf, 0, SEEK_END);
+                long dlsz = ftell(dlf);
+                fseek(dlf, 0, SEEK_SET);
+                // Load to PCSX2's display list addresses
+                uint32_t pcsx2Addrs[2] = {0x010B23C0, 0x011323C0};
+                uint32_t dlPhys = pcsx2Addrs[bi] & PS2_RAM_MASK;
+                if (dlPhys + dlsz <= PS2_RAM_SIZE) {
+                    fread(rdram + dlPhys, 1, dlsz, dlf);
+                    printf("[REO] Injected display list %d: %ld bytes at 0x%08X\n",
+                           bi, dlsz, pcsx2Addrs[bi]);
+                }
+                fclose(dlf);
+            }
+        }
+
+        // Update display list struct to use PCSX2's addresses
+        wr32s(0x29FDB8, 0x010B23C0);  // buf[0]
+        wr32s(0x29FDBC, 0x011323C0);  // buf[1]
+        wr32s(0x29FDA8, 0x010AA3C0);  // some base ptr
+        wr32s(0x29FDAC, 0x00E00000);  // buffer size
+
         printf("[REO] Snapshot injection complete.\n");
         fflush(stdout);
     }
