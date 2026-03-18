@@ -49,63 +49,65 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         WRITE32(counterAddr, 3);
     }
 
-    // Inject game data snapshot from PCSX2 into the game's allocated buffer.
-    // This bypasses the entire IOP/CDVD pipeline by providing pre-loaded data.
+    // Inject PCSX2 game data snapshot — 4MB of loaded game data (textures,
+    // headers, models) plus state regions. This bypasses the IOP/CDVD pipeline.
     static bool snapshotLoaded = false;
     if (!snapshotLoaded && frameCount == 5) {
         snapshotLoaded = true;
 
-        // The PCSX2 snapshot contains 1MB of game data (textures, headers)
-        // that was loaded by the CDVD system. We inject it directly.
-        uint32_t basePtr = 0;
-        { uint32_t p = 0x32440C & PS2_RAM_MASK; memcpy(&basePtr, rdram+p, 4); }
-        uint32_t destPhys = basePtr & PS2_RAM_MASK;
-
-        // Load game data to the PCSX2 base address (0xAEA3C0) since the
-        // injected state snapshots contain pointers to that address.
+        // Load 4MB game data at PCSX2's base address (0xAEA3C0).
+        // The state snapshots contain pointers to this address range.
         uint32_t pcsx2Base = 0xAEA3C0;
-        uint32_t pcsx2Phys = pcsx2Base & PS2_RAM_MASK;
-
-        FILE* f = fopen("tools/ps2_debug/pcsx2_snapshot_gamedata.bin", "rb");
+        FILE* f = fopen("tools/ps2_debug/pcsx2_snapshot_4mb.bin", "rb");
+        if (!f) f = fopen("tools/ps2_debug/pcsx2_snapshot_gamedata.bin", "rb");
         if (f) {
             fseek(f, 0, SEEK_END);
             long sz = ftell(f);
             fseek(f, 0, SEEK_SET);
-
-            if (pcsx2Phys + sz <= PS2_RAM_SIZE && sz > 0) {
-                fread(rdram + pcsx2Phys, 1, sz, f);
-                printf("[REO] Injected PCSX2 game data: %ld bytes → 0x%08X (PCSX2 base)\n", sz, pcsx2Base);
+            uint32_t p = pcsx2Base & PS2_RAM_MASK;
+            if (p + sz <= PS2_RAM_SIZE && sz > 0) {
+                fread(rdram + p, 1, sz, f);
+                printf("[REO] Injected game data: %ld bytes at 0x%08X\n", sz, pcsx2Base);
             }
             fclose(f);
         } else {
-            printf("[REO] pcsx2_snapshot_gamedata.bin not found\n");
+            printf("[REO] No PCSX2 snapshot found\n");
         }
 
-        // Also inject the state regions
+        // Inject state regions
+        // Inject selective state. Skip 0x29F600-0x29FE00 (display list state)
+        // because it contains PCSX2-specific DMA chain pointers.
+        // Instead, inject only safe configuration values.
         struct { const char* file; uint32_t addr; uint32_t size; } regions[] = {
             {"tools/ps2_debug/pcsx2_snapshot_324000.bin", 0x324000, 0x500},
             {"tools/ps2_debug/pcsx2_snapshot_340000.bin", 0x340000, 0x3000},
-            {"tools/ps2_debug/pcsx2_snapshot_29f600.bin", 0x29F600, 0x800},
             {"tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100},
         };
+
+        // Also set specific safe values from the 29F600 region
+        auto wr32s = [&](uint32_t a, uint32_t v) {
+            uint32_t p = a & PS2_RAM_MASK;
+            if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
+        };
+        // Display configuration (not pointers)
+        wr32s(0x29F6E0, 0x00000005);  // display mode
+        wr32s(0x29F6F0, 0x00000001);  // display enabled
+        wr32s(0x29F6F4, 0x00001000);  // some config
+        wr32s(0x29F6F8, 0x00000004);  // some config
+        wr32s(0x29FA00, 1); wr32s(0x29FA04, 1);  // subsystem ready flags
+        wr32s(0x29FA08, 1); wr32s(0x29FA0C, 1);  // subsystem ready flags
+        wr32s(0x29FA10, 1);  // all systems ready
         for (auto& r : regions) {
             FILE* rf = fopen(r.file, "rb");
             if (rf) {
-                uint32_t p = r.addr & PS2_RAM_MASK;
-                if (p + r.size <= PS2_RAM_SIZE) {
-                    fread(rdram + p, 1, r.size, rf);
-                    printf("[REO] Injected %s → 0x%08X\n", r.file, r.addr);
+                uint32_t rp = r.addr & PS2_RAM_MASK;
+                if (rp + r.size <= PS2_RAM_SIZE) {
+                    fread(rdram + rp, 1, r.size, rf);
+                    printf("[REO] Injected state: 0x%08X (%u bytes)\n", r.addr, r.size);
                 }
                 fclose(rf);
             }
         }
-
-        // Fix up pointers: PCSX2 base=0xAEA3C0, REO base=current basePtr
-        // The buffer pointers at 0x324408-0x324470 need to be rebased
-        // PCSX2 allocated at ~0x8AA3C0-0xC6A3C0; REO allocated at ~0x600000+
-        // For now, leave them as-is and see what happens — the data is at
-        // the base ptr address which may work.
-
         printf("[REO] Snapshot injection complete.\n");
         fflush(stdout);
     }
