@@ -14,6 +14,7 @@
 
 #include "ps2_syscalls.h"
 #include "reo_netbio.h"
+#include <vector>
 #include "ps2_stubs.h"
 #include "reo_hw_bridge.h"
 #include "runtime/input/input.h"
@@ -336,6 +337,33 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             }
             if (texDrawSize > 0) {
                 reo_gs_submit_path3_direct(texDraw, texDrawSize);
+            }
+
+            // Submit actual game texture from PCSX2 snapshot
+            static bool gameTexLoaded = false;
+            static uint8_t* gameTexBuf = nullptr;
+            static uint32_t gameTexSz = 0;
+            if (!gameTexLoaded) {
+                gameTexLoaded = true;
+                FILE* gtf = fopen("game_texture_gif.bin", "rb");
+                if (gtf) {
+                    fseek(gtf, 0, SEEK_END);
+                    gameTexSz = (uint32_t)ftell(gtf);
+                    fseek(gtf, 0, SEEK_SET);
+                    gameTexBuf = new uint8_t[gameTexSz];
+                    fread(gameTexBuf, 1, gameTexSz, gtf);
+                    fclose(gtf);
+                    printf("[REO] Loaded game texture: %u bytes\n", gameTexSz);
+                    fflush(stdout);
+                } else {
+                    printf("[REO] game_texture_gif.bin not found!\n");
+                    fflush(stdout);
+                }
+            }
+            if (gameTexBuf && gameTexSz > 80 + 16400) {
+                reo_gs_submit_path3_direct(gameTexBuf, 80);
+                reo_gs_submit_path3_direct(gameTexBuf + 80, 16400);
+                reo_gs_submit_path3_direct(gameTexBuf + 80 + 16400, gameTexSz - 80 - 16400);
             }
 
             // Also submit PCSX2 frame GIF data (screen clear + setup)
