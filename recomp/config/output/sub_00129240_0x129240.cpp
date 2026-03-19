@@ -9,22 +9,11 @@
 // Function: sub_00129240
 // Address: 0x129240 - 0x1292e0
 void sub_00129240_0x129240(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
-    // REO HLE: Return 0 for now — the render context struct layout needs
-    // proper initialization that we haven't figured out yet.
-    // The test GIF sprite proves the GS pipeline works.
-    // TODO: Capture render context struct layout from PCSX2 to enable
-    // the game's own rendering.
-    {
-        static int logC = 0;
-        if (logC < 3) {
-            printf("[129240] Render target alloc → 0 (HLE stub, type=%d)\n", GPR_S32(ctx, 4));
-            fflush(stdout);
-            logC++;
-        }
-        setReturnU32(ctx, 0);
-        ctx->pc = getRegU32(ctx, 31);
-        return;
-    }
+    // Let the real allocator run with tracing
+    { static int lc = 0; if (lc < 5) {
+        printf("[129240] enter: a0=%d a1=%d\n", GPR_S32(ctx, 4), GPR_S32(ctx, 5));
+        fflush(stdout); lc++;
+    }}
 
     ctx->pc = 0x129240u;
 

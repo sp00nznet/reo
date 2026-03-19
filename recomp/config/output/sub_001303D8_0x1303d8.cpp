@@ -27,9 +27,16 @@ void sub_001303D8_0x1303d8(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         uint32_t bufPhys = bufAddr & PS2_RAM_MASK;
         if (bufPhys + bytes <= PS2_RAM_SIZE) {
             memset(rdram + bufPhys, 0, bytes);
+
+            // Initialize with a minimal DMA END tag so the chain terminates cleanly
+            // DMA tag format: [63:32]=ADDR, [31:28]=ID, [27:26]=IRQ/PCE, [15:0]=QWC
+            // ID=7 (END), QWC=0 → terminates the chain immediately
+            uint64_t endTag = (7ULL << 28); // ID=END, QWC=0
+            memcpy(rdram + bufPhys, &endTag, 8);
+
             static int logC = 0;
             if (logC < 10) {
-                printf("[1303D8-HLE] Allocated DMA buffer: %u QWC at 0x%08X\n", qwc, bufAddr);
+                printf("[1303D8-HLE] Allocated DMA buffer: %u QWC at 0x%08X (with END tag)\n", qwc, bufAddr);
                 fflush(stdout);
                 logC++;
             }

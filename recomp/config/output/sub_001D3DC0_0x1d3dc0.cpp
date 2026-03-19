@@ -146,12 +146,14 @@ label_1d3dc0:
     // 0x1d3e24: 0xc04a702
     ctx->pc = 0x1D3E24u;
     SET_GPR_U32(ctx, 31, 0x1D3E2Cu);
+    printf("[D3DC0] Calling 129C08(r16=0x%08X)...\n", GPR_U32(ctx, 16)); fflush(stdout);
     ctx->pc = 0x129C08u;
     {
         const uint32_t __entryPc = ctx->pc;
         sub_00129C08_0x129c08(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1D3E2Cu; }
     }
+    printf("[D3DC0] 129C08 returned pc=0x%08X\n", ctx->pc); fflush(stdout);
     if (ctx->pc != 0x1D3E2Cu) { return; }
     ctx->pc = 0x1D3E2Cu;
     // 0x1d3e2c: 0x40282d
@@ -160,6 +162,7 @@ label_1d3dc0:
     // 0x1d3e30: 0x200202d
     ctx->pc = 0x1d3e30u;
     SET_GPR_U64(ctx, 4, (uint64_t)GPR_U64(ctx, 16) + (uint64_t)GPR_U64(ctx, 0));
+    printf("[D3DC0] Calling 1297A0...\n"); fflush(stdout);
     // 0x1d3e34: 0xc04a5e8
     ctx->pc = 0x1D3E34u;
     SET_GPR_U32(ctx, 31, 0x1D3E3Cu);
@@ -227,12 +230,14 @@ label_1d3e3c:
     SET_GPR_U32(ctx, 31, 0x1D3E6Cu);
     ctx->pc = 0x1D3E68u;
     SET_GPR_U64(ctx, 5, (uint64_t)GPR_U64(ctx, 18) + (uint64_t)GPR_U64(ctx, 0));
+    printf("[D3DC0] Calling AC730...\n"); fflush(stdout);
     ctx->pc = 0x1AC730u;
     {
         const uint32_t __entryPc = ctx->pc;
         sub_001AC730_0x1ac730(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1D3E6Cu; }
     }
+    printf("[D3DC0] AC730 returned pc=0x%08X\n", ctx->pc); fflush(stdout);
     if (ctx->pc != 0x1D3E6Cu) { return; }
     ctx->pc = 0x1D3E6Cu;
 label_1d3e6c:
