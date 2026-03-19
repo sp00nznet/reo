@@ -83,6 +83,37 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             {"tools/ps2_debug/pcsx2_mainmenu_236700.bin", "tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100},
         };
 
+        // Inject PCSX2 DMA channel table (has properly initialized render contexts)
+        {
+            FILE* chf = fopen("tools/ps2_debug/pcsx2_dma_channels.bin", "rb");
+            if (chf) {
+                fseek(chf, 0, SEEK_END);
+                long chsz = ftell(chf);
+                fseek(chf, 0, SEEK_SET);
+                uint32_t chPhys = 0x298680 & PS2_RAM_MASK;
+                if (chPhys + chsz <= PS2_RAM_SIZE) {
+                    fread(rdram + chPhys, 1, chsz, chf);
+                    printf("[REO] Injected DMA channel table: %ld bytes at 0x298680\n", chsz);
+                }
+                fclose(chf);
+            }
+        }
+        // Also inject the render pool
+        {
+            FILE* rpf = fopen("tools/ps2_debug/pcsx2_render_pool.bin", "rb");
+            if (rpf) {
+                fseek(rpf, 0, SEEK_END);
+                long rpsz = ftell(rpf);
+                fseek(rpf, 0, SEEK_SET);
+                uint32_t rpPhys = 0x298000 & PS2_RAM_MASK;
+                if (rpPhys + rpsz <= PS2_RAM_SIZE) {
+                    fread(rdram + rpPhys, 1, rpsz, rpf);
+                    printf("[REO] Injected render pool: %ld bytes at 0x298000\n", rpsz);
+                }
+                fclose(rpf);
+            }
+        }
+
         // Initialize DMA channel entries with TIM2 signature
         // sub_001A57B0 checks for "TIM2" header at channel entry byte[0-3]
         // Without this, display list allocation (1A5280) returns 0

@@ -9,42 +9,19 @@
 // Function: sub_00129240
 // Address: 0x129240 - 0x1292e0
 void sub_00129240_0x129240(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
-    // REO HLE: Render target allocator. The full chain (128F80→128F28→1303D8→1280D0)
-    // fails because DMA buffer allocation (1303D8) returns 0.
-    // We allocate a render context struct in guest memory and return it.
-    // The context is used by rendering functions (129C08, 1297A0, etc.)
-    // to submit VIF/GIF commands.
+    // REO HLE: Return 0 for now — the render context struct layout needs
+    // proper initialization that we haven't figured out yet.
+    // The test GIF sprite proves the GS pipeline works.
+    // TODO: Capture render context struct layout from PCSX2 to enable
+    // the game's own rendering.
     {
-        static uint32_t renderCtxBase = 0xD00000; // Safe region in bump allocator
-        static int allocCount = 0;
-
-        // Each render context needs ~4KB (arbitrary, generous)
-        uint32_t ctxAddr = renderCtxBase + allocCount * 0x1000;
-        allocCount = (allocCount + 1) % 16; // Recycle after 16
-
-        uint32_t ctxPhys = ctxAddr & PS2_RAM_MASK;
-        if (ctxPhys + 0x1000 <= PS2_RAM_SIZE) {
-            memset(rdram + ctxPhys, 0, 0x1000);
-
-            // Set up minimum render context fields
-            // [0] = DMA buffer base (256 QWC = 4096 bytes)
-            uint32_t dmaBuf = ctxAddr + 0x800; // Second half of our 4KB
-            uint32_t v;
-            v = dmaBuf; memcpy(rdram + ctxPhys + 4, &v, 4); // [4] = DMA buffer ptr
-            v = 256;    memcpy(rdram + ctxPhys + 8, &v, 4); // [8] = buffer size in QWC
-
-            static int logC = 0;
-            if (logC < 5) {
-                printf("[129240-HLE] Allocated render ctx at 0x%08X (dma=0x%08X) type=%d\n",
-                       ctxAddr, dmaBuf, GPR_U32(ctx, 4));
-                fflush(stdout);
-                logC++;
-            }
-
-            setReturnU32(ctx, ctxAddr);
-        } else {
-            setReturnU32(ctx, 0);
+        static int logC = 0;
+        if (logC < 3) {
+            printf("[129240] Render target alloc → 0 (HLE stub, type=%d)\n", GPR_S32(ctx, 4));
+            fflush(stdout);
+            logC++;
         }
+        setReturnU32(ctx, 0);
         ctx->pc = getRegU32(ctx, 31);
         return;
     }
