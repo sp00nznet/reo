@@ -292,6 +292,52 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             extern void reo_gs_submit_path3_direct(const void* data, uint32_t bytes);
             reo_gs_submit_path3_direct(gifData, sizeof(gifData));
 
+            // Also submit texture upload + textured sprite from file
+            static bool texGifLoaded = false;
+            static uint8_t texGif[4096];
+            static uint32_t texGifSize = 0;
+            if (!texGifLoaded) {
+                texGifLoaded = true;
+                FILE* tgf = fopen("test_texture_gif.bin", "rb");
+                if (tgf) {
+                    fseek(tgf, 0, SEEK_END);
+                    texGifSize = (uint32_t)ftell(tgf);
+                    fseek(tgf, 0, SEEK_SET);
+                    if (texGifSize > sizeof(texGif)) texGifSize = sizeof(texGif);
+                    fread(texGif, 1, texGifSize, tgf);
+                    fclose(tgf);
+                    printf("[REO] Loaded texture GIF: %u bytes\n", texGifSize);
+                    fflush(stdout);
+                }
+            }
+            if (texGifSize > 0) {
+                // Submit texture upload: setup (80 bytes) + IMAGE data (1040 bytes)
+                reo_gs_submit_path3_direct(texGif, 80);
+                reo_gs_submit_path3_direct(texGif + 80, 1040);
+            }
+
+            // Submit textured sprite draw
+            static bool texDrawLoaded = false;
+            static uint8_t texDraw[256];
+            static uint32_t texDrawSize = 0;
+            if (!texDrawLoaded) {
+                texDrawLoaded = true;
+                FILE* tdf = fopen("test_texture_draw.bin", "rb");
+                if (tdf) {
+                    fseek(tdf, 0, SEEK_END);
+                    texDrawSize = (uint32_t)ftell(tdf);
+                    fseek(tdf, 0, SEEK_SET);
+                    if (texDrawSize > sizeof(texDraw)) texDrawSize = sizeof(texDraw);
+                    fread(texDraw, 1, texDrawSize, tdf);
+                    fclose(tdf);
+                    printf("[REO] Loaded texture draw GIF: %u bytes\n", texDrawSize);
+                    fflush(stdout);
+                }
+            }
+            if (texDrawSize > 0) {
+                reo_gs_submit_path3_direct(texDraw, texDrawSize);
+            }
+
             // Also submit PCSX2 frame GIF data (screen clear + setup)
             static bool pcsx2GifLoaded = false;
             static uint8_t pcsx2Gif[4096];
@@ -361,15 +407,18 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
                     fb = vt.getFramebuffer(&fbW, &fbH, vt.user);
                 }
                 if (fb && fbW > 0 && fbH > 0) {
-                    // Count red pixels (our test sprite)
-                    int redPx = 0;
+                    // Count non-black pixels by color
+                    int redPx = 0, coloredPx = 0;
                     for (int i = 0; i < fbW * fbH; i++) {
                         uint32_t px = fb[i];
                         uint8_t r = px & 0xFF;
                         uint8_t g = (px >> 8) & 0xFF;
-                        if (r > 200 && g < 50) redPx++;
+                        uint8_t b = (px >> 16) & 0xFF;
+                        if (r > 200 && g < 50 && b < 50) redPx++;
+                        if (r > 10 || g > 10 || b > 10) coloredPx++;
                     }
-                    printf("[REO-TEST] Framebuffer %dx%d: %d red pixels\n", fbW, fbH, redPx);
+                    printf("[REO-TEST] Framebuffer %dx%d: %d red, %d colored pixels\n",
+                           fbW, fbH, redPx, coloredPx);
                     fflush(stdout);
                 }
             }
