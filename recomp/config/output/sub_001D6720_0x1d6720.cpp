@@ -83,6 +83,23 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             {"tools/ps2_debug/pcsx2_mainmenu_236700.bin", "tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100},
         };
 
+        // Initialize DMA channel entries with TIM2 signature
+        // sub_001A57B0 checks for "TIM2" header at channel entry byte[0-3]
+        // Without this, display list allocation (1A5280) returns 0
+        for (int ch = 0; ch < 8; ch++) {
+            uint32_t chAddr = (0x298680 + ch * 56) & PS2_RAM_MASK;
+            if (chAddr + 56 <= PS2_RAM_SIZE) {
+                // Write "TIM2" signature + version byte
+                rdram[chAddr + 0] = 0x54; // 'T'
+                rdram[chAddr + 1] = 0x49; // 'I'
+                rdram[chAddr + 2] = 0x4D; // 'M'
+                rdram[chAddr + 3] = 0x32; // '2'
+                rdram[chAddr + 4] = 0x04; // version (3 or 4 passes the check)
+                rdram[chAddr + 5] = 0x01; // sub-version
+            }
+        }
+        printf("[REO] Initialized 8 DMA channel entries with TIM2 headers\n");
+
         // Also set specific safe values from the 29F600 region
         auto wr32s = [&](uint32_t a, uint32_t v) {
             uint32_t p = a & PS2_RAM_MASK;
@@ -147,6 +164,27 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
     static bool dispatchCalled = false;
     if (!dispatchCalled && frameCount == 15) {
         dispatchCalled = true;
+        // Diagnostic: display list state before render dispatch
+        auto rd32x = [&](uint32_t a) -> uint32_t {
+            uint32_t p = a & PS2_RAM_MASK;
+            if (p + 4 > PS2_RAM_SIZE) return 0;
+            uint32_t v; memcpy(&v, rdram + p, 4); return v;
+        };
+        printf("[REO] Pre-dispatch state:\n");
+        printf("[REO]   DL buf[0]=0x%08X buf[1]=0x%08X dbIdx=%u\n",
+               rd32x(0x29FDB8), rd32x(0x29FDBC), rd32x(0x29FDB4));
+        printf("[REO]   entry_count=0x%08X write_idx=0x%08X\n",
+               rd32x(0x29F704), rd32x(0x29F710));
+        // Check DMA channel table at 0x298680 (56 bytes per entry)
+        // Byte 52 (0x34) = active flag
+        int freeChans = 0;
+        for (int i = 0; i < 8; i++) {
+            uint32_t entAddr = 0x298680 + i * 56;
+            uint8_t active = rdram[(entAddr + 52) & PS2_RAM_MASK];
+            if (active == 0) freeChans++;
+            printf("[REO]   chan[%d] @0x%06X: active=%d\n", i, entAddr, active);
+        }
+        printf("[REO]   Free channels: %d/8\n", freeChans);
         printf("[REO] Calling entry_1d2280 (render dispatch)...\n");
         fflush(stdout);
 
