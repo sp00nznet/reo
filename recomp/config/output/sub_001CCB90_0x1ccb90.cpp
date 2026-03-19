@@ -88,7 +88,7 @@ label_1ccbbc:
         sub_0018DE40_0x18de40(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1CCBC4u; }
     }
-    { static int lc = 0; if (lc < 20) {
+    { static int lc = 0; if (lc < 50 && GPR_U32(ctx, 2) != 0) {
         printf("[CCB90] 18DE40 returned v0=0x%08X (slot@0x%08X a0_param=%d)\n",
                GPR_U32(ctx, 2), GPR_U32(ctx, 16), GPR_U32(ctx, 17));
         fflush(stdout); lc++;

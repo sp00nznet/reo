@@ -159,54 +159,32 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         fflush(stdout);
     }
 
-    // Call entry_1d2280 (render dispatch) after snapshot injection.
-    // Now safe because 18DCB0 (display list flush) is bypassed.
-    static bool dispatchCalled = false;
-    if (!dispatchCalled && frameCount == 15) {
-        dispatchCalled = true;
-        // Diagnostic: display list state before render dispatch
-        auto rd32x = [&](uint32_t a) -> uint32_t {
-            uint32_t p = a & PS2_RAM_MASK;
-            if (p + 4 > PS2_RAM_SIZE) return 0;
-            uint32_t v; memcpy(&v, rdram + p, 4); return v;
-        };
-        printf("[REO] Pre-dispatch state:\n");
-        printf("[REO]   DL buf[0]=0x%08X buf[1]=0x%08X dbIdx=%u\n",
-               rd32x(0x29FDB8), rd32x(0x29FDBC), rd32x(0x29FDB4));
-        printf("[REO]   entry_count=0x%08X write_idx=0x%08X\n",
-               rd32x(0x29F704), rd32x(0x29F710));
-        // Check DMA channel table at 0x298680 (56 bytes per entry)
-        // Byte 52 (0x34) = active flag
-        int freeChans = 0;
-        for (int i = 0; i < 8; i++) {
-            uint32_t entAddr = 0x298680 + i * 56;
-            uint8_t active = rdram[(entAddr + 52) & PS2_RAM_MASK];
-            if (active == 0) freeChans++;
-            printf("[REO]   chan[%d] @0x%06X: active=%d\n", i, entAddr, active);
+    // Call render dispatch every frame (replaces IOP indirect dispatch callback)
+    if (frameCount >= 10) {
+        // Clear task table and DMA channel entries from previous frame
+        // so new ones can be created each frame.
+        // (In PCSX2, the display list flush in 18DCB0 handles this)
+        memset(rdram + (0x341640 & PS2_RAM_MASK), 0, 256 * 16);  // task table
+        // Reset DMA channel active flags (byte 52 of each 56-byte entry)
+        for (int ch = 0; ch < 256; ch++) {
+            uint32_t chAddr = (0x298680 + ch * 56 + 52) & PS2_RAM_MASK;
+            if (chAddr < PS2_RAM_SIZE) rdram[chAddr] = 0;
         }
-        printf("[REO]   Free channels: %d/8\n", freeChans);
-        printf("[REO] Calling entry_1d2280 (render dispatch)...\n");
-        fflush(stdout);
 
-        R5900Context saved = *ctx;
         extern void entry_1d2280_0x1d25b0(uint8_t*, R5900Context*, PS2Runtime*);
+        R5900Context saved = *ctx;
 
-        // First call the short "flush pending" function at 0x1D2280
+        // Flush pending display list
         ctx->pc = 0x1D2280;
         SET_GPR_U32(ctx, 31, 0x1D6720);
         entry_1d2280_0x1d25b0(rdram, ctx, runtime);
-        printf("[REO] entry_1d2280 (flush) returned\n");
 
-        // Then call the LONGER render dispatch function at 0x1D22B0
-        // This is the one that does memcpy, CC8F0, AF5D0, CCB90 loop
-        // to process all 6 callback slots
+        // Render dispatch — process all 6 callback slots
         *ctx = saved;
         ctx->pc = 0x1D22B0;
         SET_GPR_U32(ctx, 31, 0x1D6720);
-        SET_GPR_U32(ctx, 4, 1);  // a0 = some parameter
+        SET_GPR_U32(ctx, 4, 1);
         entry_1d2280_0x1d25b0(rdram, ctx, runtime);
-        printf("[REO] entry_1d22b0 (render dispatch) returned (pc=0x%08X)\n", ctx->pc);
-        fflush(stdout);
         *ctx = saved;
     }
 
