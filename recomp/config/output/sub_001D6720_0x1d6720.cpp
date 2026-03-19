@@ -220,13 +220,39 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             memcpy(rdram + gifPhys, gifData, sizeof(gifData));
 
             // Submit via Store32 the same way the recompiled code does.
-            printf("[REO-TEST] Writing GIF DMA: MADR=0x%08X QWC=6\n", gifAddr);
-            printf("[REO-TEST] isSpecial(0x1000A010)=%d\n",
-                   PS2Runtime::isSpecialAddress(0x1000A010));
-            fflush(stdout);
-            runtime->Store32(rdram, ctx, 0x1000A010, gifAddr);  // MADR
-            runtime->Store32(rdram, ctx, 0x1000A020, 6);        // QWC
-            runtime->Store32(rdram, ctx, 0x1000A000, 0x100);    // CHCR start
+            // Submit directly to GS renderer bypassing DMA entirely
+            extern void reo_gs_submit_path3_direct(const void* data, uint32_t bytes);
+            reo_gs_submit_path3_direct(gifData, sizeof(gifData));
+
+            static int testLog2 = 0;
+            if (testLog2 < 3) {
+                printf("[REO-TEST] Submitted %zu bytes directly to GS PATH3\n", sizeof(gifData));
+                printf("[REO-TEST] GIF tag: 0x%016llX 0x%016llX\n",
+                       (unsigned long long)tag_lo, (unsigned long long)tag_hi);
+                fflush(stdout);
+                testLog2++;
+            }
+            // Check if our test sprite produced pixels via the bridge framebuffer
+            if (frameCount == 12) {
+                int fbW = 0, fbH = 0;
+                const uint32_t* fb = nullptr;
+                auto vt = runtime->hwBridgeVt();
+                if (vt.getFramebuffer) {
+                    fb = vt.getFramebuffer(&fbW, &fbH, vt.user);
+                }
+                if (fb && fbW > 0 && fbH > 0) {
+                    // Count red pixels (our test sprite)
+                    int redPx = 0;
+                    for (int i = 0; i < fbW * fbH; i++) {
+                        uint32_t px = fb[i];
+                        uint8_t r = px & 0xFF;
+                        uint8_t g = (px >> 8) & 0xFF;
+                        if (r > 200 && g < 50) redPx++;
+                    }
+                    printf("[REO-TEST] Framebuffer %dx%d: %d red pixels\n", fbW, fbH, redPx);
+                    fflush(stdout);
+                }
+            }
 
             static int testLog = 0;
             if (testLog < 3) {
