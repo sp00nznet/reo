@@ -665,20 +665,92 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             reo_gs_submit_path3_direct(gif, 96);
         }
 
-        // Green rectangle to verify positioning
+        // Textured sprite: upload 16x16 gradient to VRAM then draw it
         {
-            uint8_t gif2[96];
-            memset(gif2, 0, sizeof(gif2));
-            uint64_t tlo = 5 | (1ULL << 15) | (1ULL << 60);
+            // Step 1: Upload 16x16 RGBA texture to GS VRAM
+            uint8_t setup[80];
+            memset(setup, 0, sizeof(setup));
+            uint64_t tlo = 4 | (1ULL << 15) | (1ULL << 60);
+            memcpy(setup, &tlo, 8);
             uint64_t thi = 0x0E;
-            memcpy(gif2, &tlo, 8); memcpy(gif2+8, &thi, 8);
-            uint64_t v, r;
-            v = 0; r = 0x4C; memcpy(gif2+16, &v, 8); memcpy(gif2+24, &r, 8);
-            v = 6; r = 0x00; memcpy(gif2+32, &v, 8); memcpy(gif2+40, &r, 8);
-            v = 0x8000FF00ULL; r = 0x01; memcpy(gif2+48, &v, 8); memcpy(gif2+56, &r, 8); // green
-            v = (350*16)|((50*16)<<16); r = 0x05; memcpy(gif2+64, &v, 8); memcpy(gif2+72, &r, 8);
-            v = (550*16)|((250*16)<<16); r = 0x05; memcpy(gif2+80, &v, 8); memcpy(gif2+88, &r, 8);
-            reo_gs_submit_path3_direct(gif2, 96);
+            memcpy(setup+8, &thi, 8);
+            // BITBLTBUF: DBP=0x200 (VRAM page away from framebuffer), DBW=1 (64px)
+            uint64_t v = (0x200ULL << 32) | (1ULL << 48) | (0ULL << 56);
+            uint64_t r = 0x50;
+            memcpy(setup+16, &v, 8); memcpy(setup+24, &r, 8);
+            v = 0; r = 0x51; memcpy(setup+32, &v, 8); memcpy(setup+40, &r, 8); // TRXPOS
+            v = 16 | (16ULL << 32); r = 0x52; memcpy(setup+48, &v, 8); memcpy(setup+56, &r, 8); // TRXREG
+            v = 0; r = 0x53; memcpy(setup+64, &v, 8); memcpy(setup+72, &r, 8); // TRXDIR
+            reo_gs_submit_path3_direct(setup, 80);
+
+            // Step 2: IMAGE data — 16x16 RGBA = 1024 bytes = 64 QW
+            uint8_t imgpkt[16 + 1024];
+            tlo = 64 | (1ULL << 15) | (2ULL << 58); // IMAGE mode
+            thi = 0;
+            memcpy(imgpkt, &tlo, 8); memcpy(imgpkt+8, &thi, 8);
+            for (int py = 0; py < 16; py++) {
+                for (int px = 0; px < 16; px++) {
+                    int idx = 16 + (py * 16 + px) * 4;
+                    imgpkt[idx+0] = (uint8_t)(px * 16);  // R
+                    imgpkt[idx+1] = (uint8_t)(py * 16);  // G
+                    imgpkt[idx+2] = 128;                   // B
+                    imgpkt[idx+3] = 0x80;                  // A
+                }
+            }
+            reo_gs_submit_path3_direct(imgpkt, sizeof(imgpkt));
+
+            // Step 3: Draw textured sprite with proper UVs
+            uint8_t draw[9*16]; // 9 A+D entries
+            memset(draw, 0, sizeof(draw));
+            tlo = 9 | (1ULL << 15) | (1ULL << 60); // NLOOP=9
+            thi = 0x0E;
+            memcpy(draw, &tlo, 8); memcpy(draw+8, &thi, 8);
+            int dp = 16; // data pointer
+
+            // 1. FRAME_1: FBP=0, FBW=10(640px), PSM=0
+            v = 0 | (10ULL << 16); r = 0x4C;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 2. TEX0_1: TBP0=0x200, TBW=1, PSM=0, TW=4(16px), TH=4(16px), TCC=1
+            v = 0x200ULL | (1ULL << 14) | (4ULL << 26) | (4ULL << 30) | (1ULL << 34);
+            r = 0x06;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 3. TEX1_1: LCM=1 (fixed LOD), K=0
+            v = 1; r = 0x14;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 4. PRIM: SPRITE + TME(texture)
+            v = 6 | (1 << 4); r = 0x00;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 5. RGBAQ: white (0x80 = 1.0 in PS2 color math)
+            v = 0x80808080ULL; r = 0x01;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 6. ST vertex 0: S=0.0, T=0.0 (top-left of texture)
+            { float fs=0.0f, ft=0.0f; uint32_t si,ti;
+              memcpy(&si, &fs, 4); memcpy(&ti, &ft, 4);
+              v = (uint64_t)si | ((uint64_t)ti << 32); }
+            r = 0x02; // ST register
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 7. XYZ2 vertex 0: (350, 50)
+            v = (350*16ULL) | ((50*16ULL) << 16); r = 0x05;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 8. ST vertex 1: S=16.0, T=16.0 (bottom-right of texture)
+            { float fs=16.0f, ft=16.0f; uint32_t si,ti;
+              memcpy(&si, &fs, 4); memcpy(&ti, &ft, 4);
+              v = (uint64_t)si | ((uint64_t)ti << 32); }
+            r = 0x02;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            // 9. XYZ2 vertex 1: (500, 200) — drawing kick
+            v = (500*16ULL) | ((200*16ULL) << 16); r = 0x05;
+            memcpy(draw+dp, &v, 8); memcpy(draw+dp+8, &r, 8); dp += 16;
+
+            reo_gs_submit_path3_direct(draw, dp);
         }
 
         // Blue rectangle
