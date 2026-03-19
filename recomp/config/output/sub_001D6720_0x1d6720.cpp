@@ -159,6 +159,85 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         fflush(stdout);
     }
 
+    // Inject a test GIF packet to prove the GS renderer can draw
+    // This writes a colored sprite directly via GS register writes
+    if (frameCount >= 10 && frameCount % 2 == 0) {
+        auto* gs = bridge ? bridge->input() : nullptr; // just to check bridge exists
+        if (bridge) {
+            // Build a GIF A+D packet that draws a red rectangle
+            // GIF tag: NLOOP=5, EOP=1, FLG=0 (PACKED), NREG=1, REG=A+D (0xE)
+            uint8_t gifData[6 * 16]; // 1 tag + 5 register writes = 96 bytes
+            memset(gifData, 0, sizeof(gifData));
+
+            // GIF tag (16 bytes)
+            uint64_t tag_lo = 5 | (1ULL << 15); // NLOOP=5, EOP=1
+            tag_lo |= (0ULL << 58); // FLG=PACKED
+            tag_lo |= (1ULL << 60); // NREG=1
+            uint64_t tag_hi = 0x0E; // REGS = A+D
+            memcpy(gifData + 0, &tag_lo, 8);
+            memcpy(gifData + 8, &tag_hi, 8);
+
+            // Reg 1: FRAME (0x4C) - set framebuffer to page 0, PSM32, fbw=10
+            uint64_t frame_val = 0x00000 | (10 << 16) | (0 << 24); // FBP=0, FBW=10, PSM=0
+            uint64_t frame_reg = 0x4C;
+            memcpy(gifData + 16, &frame_val, 8);
+            memcpy(gifData + 24, &frame_reg, 8);
+
+            // Reg 2: PRIM (0x00) - SPRITE primitive
+            uint64_t prim_val = 6; // SPRITE
+            uint64_t prim_reg = 0x00;
+            memcpy(gifData + 32, &prim_val, 8);
+            memcpy(gifData + 40, &prim_reg, 8);
+
+            // Reg 3: RGBAQ (0x01) - Red color
+            uint64_t rgbaq_val = 0xFF | (0x00 << 8) | (0x00 << 16) | (0x80ULL << 24);
+            uint64_t rgbaq_reg = 0x01;
+            memcpy(gifData + 48, &rgbaq_val, 8);
+            memcpy(gifData + 56, &rgbaq_reg, 8);
+
+            // Reg 4: XYZ2 (0x05) - top-left (100,100)
+            uint64_t xyz2_tl = ((uint64_t)(100*16) << 0) | ((uint64_t)(100*16) << 16);
+            uint64_t xyz2_reg1 = 0x05;
+            memcpy(gifData + 64, &xyz2_tl, 8);
+            memcpy(gifData + 72, &xyz2_reg1, 8);
+
+            // Reg 5: XYZ2 (0x05) - bottom-right (300,200)
+            uint64_t xyz2_br = ((uint64_t)(300*16) << 0) | ((uint64_t)(200*16) << 16);
+            uint64_t xyz2_reg2 = 0x05;
+            memcpy(gifData + 80, &xyz2_br, 8);
+            memcpy(gifData + 88, &xyz2_reg2, 8);
+
+            // Submit directly to GS renderer via PATH3
+            extern void reoSubmitGifPath3(const void* data, uint32_t size);
+            // We don't have a direct function, but we can use the bridge's gs
+            // Actually, let's use the GS renderer from the bridge
+            // The bridge's m_gs is private. Let's write the GIF data to
+            // a display list buffer location and trigger DMA.
+
+            // Write GIF data to a known location in guest RAM
+            uint32_t gifAddr = 0x7F0000; // safe unused area
+            uint32_t gifPhys = gifAddr & PS2_RAM_MASK;
+            memcpy(rdram + gifPhys, gifData, sizeof(gifData));
+
+            // Submit via Store32 the same way the recompiled code does.
+            printf("[REO-TEST] Writing GIF DMA: MADR=0x%08X QWC=6\n", gifAddr);
+            printf("[REO-TEST] isSpecial(0x1000A010)=%d\n",
+                   PS2Runtime::isSpecialAddress(0x1000A010));
+            fflush(stdout);
+            runtime->Store32(rdram, ctx, 0x1000A010, gifAddr);  // MADR
+            runtime->Store32(rdram, ctx, 0x1000A020, 6);        // QWC
+            runtime->Store32(rdram, ctx, 0x1000A000, 0x100);    // CHCR start
+
+            static int testLog = 0;
+            if (testLog < 3) {
+                printf("[REO-TEST] Submitted test GIF sprite at 0x%08X (%zu bytes)\n",
+                       gifAddr, sizeof(gifData));
+                fflush(stdout);
+                testLog++;
+            }
+        }
+    }
+
     // Call render dispatch every frame (replaces IOP indirect dispatch callback)
     if (frameCount >= 10) {
         // Clear task table and DMA channel entries from previous frame
