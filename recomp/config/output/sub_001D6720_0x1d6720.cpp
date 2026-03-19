@@ -190,7 +190,8 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         fflush(stdout);
     }
 
-    // Inject a test GIF packet to prove the GS renderer can draw
+    // Inject PCSX2's GIF frame data + our test sprite
+    // The PCSX2 data does screen clears; we add a colored rectangle on top
     // This writes a colored sprite directly via GS register writes
     if (frameCount >= 10 && frameCount % 2 == 0) {
         auto* gs = bridge ? bridge->input() : nullptr; // just to check bridge exists
@@ -251,9 +252,61 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             memcpy(rdram + gifPhys, gifData, sizeof(gifData));
 
             // Submit via Store32 the same way the recompiled code does.
-            // Submit directly to GS renderer bypassing DMA entirely
+            // Submit test sprite directly to GS renderer
             extern void reo_gs_submit_path3_direct(const void* data, uint32_t bytes);
             reo_gs_submit_path3_direct(gifData, sizeof(gifData));
+
+            // Also submit PCSX2 frame GIF data (screen clear + setup)
+            static bool pcsx2GifLoaded = false;
+            static uint8_t pcsx2Gif[4096];
+            static uint32_t pcsx2GifSize = 0;
+            if (!pcsx2GifLoaded) {
+                pcsx2GifLoaded = true;
+                FILE* gf = fopen("tools/ps2_debug/pcsx2_frame_gif.bin", "rb");
+                if (gf) {
+                    fseek(gf, 0, SEEK_END);
+                    pcsx2GifSize = (uint32_t)ftell(gf);
+                    fseek(gf, 0, SEEK_SET);
+                    if (pcsx2GifSize > sizeof(pcsx2Gif)) pcsx2GifSize = sizeof(pcsx2Gif);
+                    fread(pcsx2Gif, 1, pcsx2GifSize, gf);
+                    fclose(gf);
+                    printf("[REO] Loaded PCSX2 GIF data: %u bytes\n", pcsx2GifSize);
+                    fflush(stdout);
+
+                    // Extract individual GIF packets from the DMA chain and submit them
+                    // The DMA chain uses NEXT tags with PCSX2-specific addresses
+                    // We need to submit just the GIF payload data, not the DMA tags
+                }
+            }
+            if (pcsx2GifSize > 0) {
+                // Parse DMA chain and submit GIF packets
+                uint32_t pos = 0;
+                uint32_t pcsx2Base = 0x010B23C0;
+                while (pos + 16 <= pcsx2GifSize) {
+                    uint64_t tag;
+                    memcpy(&tag, pcsx2Gif + pos, 8);
+                    uint16_t qwc = (uint16_t)(tag & 0xFFFF);
+                    uint32_t tagId = (uint32_t)((tag >> 28) & 0x7);
+                    uint32_t tagAddr = (uint32_t)((tag >> 32) & 0x7FFFFFFF);
+
+                    if (qwc > 0) {
+                        uint32_t dataStart = pos + 16;
+                        uint32_t bytes = qwc * 16;
+                        if (dataStart + bytes <= pcsx2GifSize) {
+                            reo_gs_submit_path3_direct(pcsx2Gif + dataStart, bytes);
+                        }
+                    }
+
+                    if (tagId == 7) break; // END
+                    else if (tagId == 2) { // NEXT
+                        uint32_t rel = tagAddr - pcsx2Base;
+                        if (rel < pcsx2GifSize) pos = rel;
+                        else break;
+                    } else if (tagId == 1) { // CNT
+                        pos = pos + 16 + qwc * 16;
+                    } else break;
+                }
+            }
 
             static int testLog2 = 0;
             if (testLog2 < 3) {
