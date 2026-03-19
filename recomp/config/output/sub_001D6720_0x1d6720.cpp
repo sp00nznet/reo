@@ -13,6 +13,7 @@
 #include "ps2_recompiled_stubs.h"
 
 #include "ps2_syscalls.h"
+#include "reo_netbio.h"
 #include "ps2_stubs.h"
 #include "reo_hw_bridge.h"
 #include "runtime/input/input.h"
@@ -185,6 +186,41 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         wr32s(0x29FDBC, 0x011323C0);  // buf[1]
         wr32s(0x29FDA8, 0x010AA3C0);  // some base ptr
         wr32s(0x29FDAC, 0x00E00000);  // buffer size
+
+        // Load game data from NETBIO archives
+        {
+            static NetbioReader netbio;
+            if (netbio.open("game_data/NETBIO00.DAT")) {
+                // Parse romdata_usa.afs (index 0) — contains all game NBD files
+                std::vector<NetbioEntry> romdata;
+                int romCount = netbio.parse_inner_afs(0, romdata);
+                if (romCount > 0) {
+                    printf("[REO] romdata_usa.afs: %d files\n", romCount);
+
+                    // Load EF01.NBD (index 0) — main menu/demo scene data
+                    // Load to the game's data buffer region
+                    uint32_t loadAddr = 0xE00000; // Safe region after our DMA pools
+                    for (int i = 0; i < std::min(romCount, 5); i++) {
+                        uint32_t phys = loadAddr & PS2_RAM_MASK;
+                        if (phys + romdata[i].size > PS2_RAM_SIZE) continue;
+                        if (romdata[i].size > 0x200000) continue; // Skip files > 2MB
+
+                        // Read directly from the DAT file
+                        FILE* datf = fopen("game_data/NETBIO00.DAT", "rb");
+                        if (datf) {
+                            fseek(datf, romdata[i].offset, SEEK_SET);
+                            uint32_t readSz = std::min(romdata[i].size, (uint32_t)(PS2_RAM_SIZE - phys));
+                            fread(rdram + phys, 1, readSz, datf);
+                            fclose(datf);
+                            printf("[REO] Loaded NBD [%d] '%s' (%u bytes) → 0x%08X\n",
+                                   i, romdata[i].name, readSz, loadAddr);
+                        }
+                        loadAddr += (romdata[i].size + 0xFFF) & ~0xFFF; // Align to 4KB
+                    }
+                }
+                netbio.close();
+            }
+        }
 
         printf("[REO] Snapshot injection complete.\n");
         fflush(stdout);
