@@ -9,15 +9,8 @@
 // Function: sub_00129168
 // Address: 0x129168 - 0x129240
 void sub_00129168_0x129168(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
-    // REO HLE: DMA buffer initialization for render context.
-    // Return 0 (success) to allow the render target allocator to succeed.
+    // HLE: return 0 (success). The real function's sub-calls fail.
     {
-        static int lc = 0;
-        if (lc < 5) {
-            printf("[129168-HLE] DMA init bypassed → 0 (success)\n");
-            fflush(stdout);
-            lc++;
-        }
         setReturnU32(ctx, 0);
         ctx->pc = getRegU32(ctx, 31);
         return;

@@ -9,21 +9,12 @@
 // Function: sub_001297A0
 // Address: 0x1297a0 - 0x1297e0
 void sub_001297A0_0x1297a0(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
-    // REO: Scene builder function. Calls entry_129610 which contains the
-    // actual geometry submission (VIF1 commands, texture uploads, etc.).
-    // Currently crashes because render context fields beyond [0-4] are
-    // uninitialized. Stub to return 0 until context initialization is fixed.
-    {
-        static int lc = 0;
-        if (lc < 3) {
-            printf("[1297A0] Scene builder stubbed (need render ctx init)\n");
-            fflush(stdout);
-            lc++;
-        }
-        setReturnU32(ctx, 0);
-        ctx->pc = getRegU32(ctx, 31);
-        return;
-    }
+    { static int lc = 0; if (lc < 10) {
+        printf("[1297A0] enter: a0=0x%08X a1=0x%08X a2=0x%08X (a2&63=%d)\n",
+               GPR_U32(ctx, 4), GPR_U32(ctx, 5), GPR_U32(ctx, 6),
+               GPR_U32(ctx, 6) & 63);
+        fflush(stdout); lc++;
+    }}
 
     ctx->pc = 0x1297a0u;
 
