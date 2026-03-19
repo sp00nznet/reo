@@ -170,15 +170,31 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             uint32_t chAddr = (0x298680 + ch * 56 + 52) & PS2_RAM_MASK;
             if (chAddr < PS2_RAM_SIZE) rdram[chAddr] = 0;
         }
-        // Reset display list write pointers so new entries can be written
+        // Reset display list state for new frame
         auto wr32f = [&](uint32_t a, uint32_t v) {
             uint32_t p = a & PS2_RAM_MASK;
             if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
         };
-        wr32f(0x29F704, 0);  // entry_count (head read index)
-        wr32f(0x29F708, 0);  // secondary count
-        wr32f(0x29F710, 0);  // write_idx
-        wr32f(0x29F714, 0);  // secondary write idx
+        auto rd32f = [&](uint32_t a) -> uint32_t {
+            uint32_t p = a & PS2_RAM_MASK;
+            if (p + 4 > PS2_RAM_SIZE) return 0;
+            uint32_t v; memcpy(&v, rdram + p, 4); return v;
+        };
+        // Toggle display buffer index (double-buffering)
+        uint32_t curDbIdx = rd32f(0x29FDB4);
+        uint32_t newDbIdx = curDbIdx ^ 1;
+        wr32f(0x29FDB4, newDbIdx);
+        // Set buffer swap state to 1 (ready)
+        wr32f(0x29FDB0, 1);
+        // Reset write pointers for the NEW buffer
+        wr32f(0x29F704 + newDbIdx * 4, 0);  // entry_count[dbIdx]
+        wr32f(0x29F70C + newDbIdx * 4, 0);  // write_idx[dbIdx]
+        // Update current write buffer pointer from buffer table
+        uint32_t bufAddr = rd32f(0x29FDC4 + newDbIdx * 4);
+        if (bufAddr == 0) bufAddr = (newDbIdx == 0) ? 0x700000 : 0x780000;
+        wr32f(0x29FDB8, bufAddr);  // current write ptr
+        wr32f(0x29FDC0, bufAddr);  // write buffer start
+        wr32f(0x29FDBC, bufAddr + 0x80000);  // write buffer end
 
         extern void entry_1d2280_0x1d25b0(uint8_t*, R5900Context*, PS2Runtime*);
         R5900Context saved = *ctx;
