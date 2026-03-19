@@ -753,20 +753,28 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             reo_gs_submit_path3_direct(draw, dp);
         }
 
-        // Blue rectangle
-        {
-            uint8_t gif3[96];
-            memset(gif3, 0, sizeof(gif3));
-            uint64_t tlo = 5 | (1ULL << 15) | (1ULL << 60);
-            uint64_t thi = 0x0E;
-            memcpy(gif3, &tlo, 8); memcpy(gif3+8, &thi, 8);
-            uint64_t v, r;
-            v = 0; r = 0x4C; memcpy(gif3+16, &v, 8); memcpy(gif3+24, &r, 8);
-            v = 6; r = 0x00; memcpy(gif3+32, &v, 8); memcpy(gif3+40, &r, 8);
-            v = 0x80FF0000ULL; r = 0x01; memcpy(gif3+48, &v, 8); memcpy(gif3+56, &r, 8); // blue
-            v = (100*16)|((250*16)<<16); r = 0x05; memcpy(gif3+64, &v, 8); memcpy(gif3+72, &r, 8);
-            v = (300*16)|((400*16)<<16); r = 0x05; memcpy(gif3+80, &v, 8); memcpy(gif3+88, &r, 8);
-            reo_gs_submit_path3_direct(gif3, 96);
+        // Tiled game textures from PCSX2 snapshot
+        static uint8_t* tiledBuf = nullptr;
+        static uint32_t tiledSz = 0;
+        if (!tiledBuf) {
+            FILE* tf = fopen("game_textures_tiled.bin", "rb");
+            if (tf) {
+                fseek(tf, 0, SEEK_END); tiledSz = (uint32_t)ftell(tf); fseek(tf, 0, SEEK_SET);
+                tiledBuf = new uint8_t[tiledSz]; fread(tiledBuf, 1, tiledSz, tf); fclose(tf);
+                printf("[REO] Loaded tiled textures: %u bytes\n", tiledSz);
+                fflush(stdout);
+            }
+        }
+        if (tiledBuf) {
+            // Each tile = 80 (setup) + 16400 (image) + 160 (draw) = 16640 bytes
+            uint32_t tileSize = 80 + 16400 + 160;
+            int numTiles = tiledSz / tileSize;
+            for (int t = 0; t < numTiles; t++) {
+                uint8_t* base = tiledBuf + t * tileSize;
+                reo_gs_submit_path3_direct(base, 80);            // setup
+                reo_gs_submit_path3_direct(base + 80, 16400);    // IMAGE
+                reo_gs_submit_path3_direct(base + 80 + 16400, 160); // draw
+            }
         }
     }
 
