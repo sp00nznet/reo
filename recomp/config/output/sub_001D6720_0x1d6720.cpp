@@ -142,6 +142,36 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         fflush(stdout);
     }
 
+    // Call entry_1d2280 (render dispatch) after snapshot injection.
+    // Now safe because 18DCB0 (display list flush) is bypassed.
+    static bool dispatchCalled = false;
+    if (!dispatchCalled && frameCount == 15) {
+        dispatchCalled = true;
+        printf("[REO] Calling entry_1d2280 (render dispatch)...\n");
+        fflush(stdout);
+
+        R5900Context saved = *ctx;
+        extern void entry_1d2280_0x1d25b0(uint8_t*, R5900Context*, PS2Runtime*);
+
+        // First call the short "flush pending" function at 0x1D2280
+        ctx->pc = 0x1D2280;
+        SET_GPR_U32(ctx, 31, 0x1D6720);
+        entry_1d2280_0x1d25b0(rdram, ctx, runtime);
+        printf("[REO] entry_1d2280 (flush) returned\n");
+
+        // Then call the LONGER render dispatch function at 0x1D22B0
+        // This is the one that does memcpy, CC8F0, AF5D0, CCB90 loop
+        // to process all 6 callback slots
+        *ctx = saved;
+        ctx->pc = 0x1D22B0;
+        SET_GPR_U32(ctx, 31, 0x1D6720);
+        SET_GPR_U32(ctx, 4, 1);  // a0 = some parameter
+        entry_1d2280_0x1d25b0(rdram, ctx, runtime);
+        printf("[REO] entry_1d22b0 (render dispatch) returned (pc=0x%08X)\n", ctx->pc);
+        fflush(stdout);
+        *ctx = saved;
+    }
+
     // One-shot: force SifBindRpc for each needed IOP module
     // The game's IOP callback system (indirect dispatch) never fires because
     // IOP doesn't run. We manually bind RPC clients so SifCallRpc can work.

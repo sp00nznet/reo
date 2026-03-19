@@ -9,8 +9,15 @@
 // Function: entry_1d2280
 // Address: 0x1d2280 - 0x1d25b0
 void entry_1d2280_0x1d25b0(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
-    printf("[E1D2280] ENTER a0=0x%08X ra=0x%08X\n", GPR_U32(ctx, 4), GPR_U32(ctx, 31));
+    printf("[E1D2280] ENTER pc=0x%08X a0=0x%08X ra=0x%08X\n", ctx->pc, GPR_U32(ctx, 4), GPR_U32(ctx, 31));
     fflush(stdout);
+
+    // Allow entry at 0x1D22B0 (the render dispatch function)
+    if (ctx->pc == 0x1D22B0u) {
+        printf("[E1D2280] Entering at 0x1D22B0 (render dispatch path)\n");
+        fflush(stdout);
+        goto label_1d22b0;
+    }
 
     ctx->pc = 0x1d2280u;
 
@@ -82,6 +89,7 @@ void entry_1d2280_0x1d25b0(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
     ctx->pc = 0x1d22acu;
     // NOP
     // 0x1d22b0: 0x27bdfeb0
+label_1d22b0:
     ctx->pc = 0x1d22b0u;
     SET_GPR_S32(ctx, 29, ADD32(GPR_U32(ctx, 29), 4294966960));
     // 0x1d22b4: 0x3c050025
