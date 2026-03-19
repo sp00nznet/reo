@@ -645,6 +645,59 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         logCount++;
     }
 
+    // Submit test sprites AFTER all game rendering (so they aren't overwritten by screen clears)
+    if (frameCount >= 10) {
+        extern void reo_gs_submit_path3_direct(const void* data, uint32_t bytes);
+
+        // Red rectangle (flat colored sprite)
+        {
+            uint8_t gif[96];
+            memset(gif, 0, sizeof(gif));
+            uint64_t tlo = 5 | (1ULL << 15) | (1ULL << 60);
+            uint64_t thi = 0x0E;
+            memcpy(gif, &tlo, 8); memcpy(gif+8, &thi, 8);
+            uint64_t v; uint64_t r;
+            v = 0; r = 0x4C; memcpy(gif+16, &v, 8); memcpy(gif+24, &r, 8); // FRAME
+            v = 6; r = 0x00; memcpy(gif+32, &v, 8); memcpy(gif+40, &r, 8); // PRIM=SPRITE
+            v = 0x800000FF; r = 0x01; memcpy(gif+48, &v, 8); memcpy(gif+56, &r, 8); // RGBAQ=red
+            v = (100*16)|((100*16)<<16); r = 0x05; memcpy(gif+64, &v, 8); memcpy(gif+72, &r, 8);
+            v = (300*16)|((200*16)<<16); r = 0x05; memcpy(gif+80, &v, 8); memcpy(gif+88, &r, 8);
+            reo_gs_submit_path3_direct(gif, 96);
+        }
+
+        // Green rectangle to verify positioning
+        {
+            uint8_t gif2[96];
+            memset(gif2, 0, sizeof(gif2));
+            uint64_t tlo = 5 | (1ULL << 15) | (1ULL << 60);
+            uint64_t thi = 0x0E;
+            memcpy(gif2, &tlo, 8); memcpy(gif2+8, &thi, 8);
+            uint64_t v, r;
+            v = 0; r = 0x4C; memcpy(gif2+16, &v, 8); memcpy(gif2+24, &r, 8);
+            v = 6; r = 0x00; memcpy(gif2+32, &v, 8); memcpy(gif2+40, &r, 8);
+            v = 0x8000FF00ULL; r = 0x01; memcpy(gif2+48, &v, 8); memcpy(gif2+56, &r, 8); // green
+            v = (350*16)|((50*16)<<16); r = 0x05; memcpy(gif2+64, &v, 8); memcpy(gif2+72, &r, 8);
+            v = (550*16)|((250*16)<<16); r = 0x05; memcpy(gif2+80, &v, 8); memcpy(gif2+88, &r, 8);
+            reo_gs_submit_path3_direct(gif2, 96);
+        }
+
+        // Blue rectangle
+        {
+            uint8_t gif3[96];
+            memset(gif3, 0, sizeof(gif3));
+            uint64_t tlo = 5 | (1ULL << 15) | (1ULL << 60);
+            uint64_t thi = 0x0E;
+            memcpy(gif3, &tlo, 8); memcpy(gif3+8, &thi, 8);
+            uint64_t v, r;
+            v = 0; r = 0x4C; memcpy(gif3+16, &v, 8); memcpy(gif3+24, &r, 8);
+            v = 6; r = 0x00; memcpy(gif3+32, &v, 8); memcpy(gif3+40, &r, 8);
+            v = 0x80FF0000ULL; r = 0x01; memcpy(gif3+48, &v, 8); memcpy(gif3+56, &r, 8); // blue
+            v = (100*16)|((250*16)<<16); r = 0x05; memcpy(gif3+64, &v, 8); memcpy(gif3+72, &r, 8);
+            v = (300*16)|((400*16)<<16); r = 0x05; memcpy(gif3+80, &v, 8); memcpy(gif3+88, &r, 8);
+            reo_gs_submit_path3_direct(gif3, 96);
+        }
+    }
+
     // Return 1 (frame ready) and set pc = $ra
     setReturnU32(ctx, 1);
     ctx->pc = getRegU32(ctx, 31);
