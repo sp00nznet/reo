@@ -280,11 +280,9 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         fflush(stdout);
     }
 
-    // Inject PCSX2's GIF frame data + our test sprite
-    // The PCSX2 data does screen clears; we add a colored rectangle on top
-    // This writes a colored sprite directly via GS register writes
-    if (frameCount >= 10 && frameCount % 2 == 0) {
-        auto* gs = bridge ? bridge->input() : nullptr; // just to check bridge exists
+    // (Old test rendering removed)
+    if (false) { // DISABLED — old test code
+        auto* gs = bridge ? bridge->input() : nullptr;
         if (bridge) {
             // Build a GIF A+D packet that draws a red rectangle
             // GIF tag: NLOOP=5, EOP=1, FLG=0 (PACKED), NREG=1, REG=A+D (0xE)
@@ -739,33 +737,30 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         logCount++;
     }
 
-    // Render game texture collage AFTER all game processing
+    // Inject PCSX2 title screen framebuffer directly
     if (frameCount >= 10) {
         extern void reo_gs_submit_path3_direct(const void* data, uint32_t bytes);
 
-        // Tiled game textures from PCSX2 snapshot
-        static uint8_t* tiledBuf = nullptr;
-        static uint32_t tiledSz = 0;
-        if (!tiledBuf) {
-            FILE* tf = fopen("game_textures_tiled.bin", "rb");
+        static uint8_t* titleFb = nullptr;
+        static bool titleLoaded = false;
+        if (!titleLoaded) {
+            titleLoaded = true;
+            FILE* tf = fopen("title_framebuffer.bin", "rb");
             if (tf) {
-                fseek(tf, 0, SEEK_END); tiledSz = (uint32_t)ftell(tf); fseek(tf, 0, SEEK_SET);
-                tiledBuf = new uint8_t[tiledSz]; fread(tiledBuf, 1, tiledSz, tf); fclose(tf);
-                printf("[REO] Loaded tiled textures: %u bytes\n", tiledSz);
+                titleFb = new uint8_t[640*448*4];
+                fread(titleFb, 1, 640*448*4, tf);
+                fclose(tf);
+                printf("[REO] Loaded title screen framebuffer\n");
                 fflush(stdout);
             }
         }
-        if (tiledBuf) {
-            // Each tile = 80 (setup) + 16400 (image) + 160 (draw) = 16640 bytes
-            uint32_t tileSize = 80 + 16400 + 160;
-            int numTiles = tiledSz / tileSize;
-            for (int t = 0; t < numTiles; t++) {
-                uint8_t* base = tiledBuf + t * tileSize;
-                reo_gs_submit_path3_direct(base, 80);            // setup
-                reo_gs_submit_path3_direct(base + 80, 16400);    // IMAGE
-                reo_gs_submit_path3_direct(base + 80 + 16400, 160); // draw
-            }
+        if (titleFb) {
+            // Write title screen directly to the GS renderer's framebuffer
+            extern void reo_gs_write_framebuffer(const uint32_t* pixels, int w, int h);
+            reo_gs_write_framebuffer((const uint32_t*)titleFb, 640, 448);
         }
+
+        // (texture collage removed — title screen framebuffer replaces it)
     }
 
     // Return 1 (frame ready) and set pc = $ra
