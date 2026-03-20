@@ -551,6 +551,20 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         wr32f(0x29FDC0, bufAddr);  // write buffer start
         wr32f(0x29FDBC, bufAddr + 0x80000);  // write buffer end
 
+        // Populate render object table RIGHT BEFORE dispatch (game resets it each frame)
+        {
+            auto wr32r = [&](uint32_t a, uint32_t v) {
+                uint32_t p = a & PS2_RAM_MASK;
+                if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
+            };
+            // Write PCSX2 snapshot data pointers to render object table
+            uint32_t base = 0xAEA3C0;
+            wr32r(0x224C64,       base + 0x80940);
+            wr32r(0x224C64 + 64,  base + 0xA0E40);
+            wr32r(0x224C64 + 128, base + 0x121840);
+            wr32r(0x224C64 + 192, base + 0x161D40);
+        }
+
         extern void entry_1d2280_0x1d25b0(uint8_t*, R5900Context*, PS2Runtime*);
         R5900Context saved = *ctx;
 
