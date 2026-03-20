@@ -223,6 +223,59 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
             }
         }
 
+        // Wire loaded NBD data to render object table at 0x224C64
+        // sub_0013F8A8 reads this table: 256 entries, 64 bytes each
+        // entry[0] = pointer to renderable object data (0 = empty)
+        {
+            auto wr32n = [&](uint32_t a, uint32_t v) {
+                uint32_t p = a & PS2_RAM_MASK;
+                if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
+            };
+            // Write PCSX2 snapshot data pointers into the render object table
+            // The PCSX2 data at base+offsets is already in parsed format
+            uint32_t base = 0xAEA3C0; // PCSX2 base (injected snapshot)
+            wr32n(0x224C64,       base + 0x80940);   // dispatch slot 0 data
+            wr32n(0x224C64 + 64,  base + 0xA0E40);   // dispatch slot 1
+            wr32n(0x224C64 + 128, base + 0x121840);  // dispatch slot 2
+            wr32n(0x224C64 + 192, base + 0x161D40);  // dispatch slot 3
+
+            printf("[REO] Wired NBD data to render object table at 0x224C64\n");
+            fflush(stdout);
+        }
+
+        // Wire loaded NBD data to scene data table at 0x264A00
+        // Format: [flags:4][data_ptr:4][0:4][0:4] per 16-byte entry
+        // PCSX2 uses flags 0x30000030 and 0x00000030
+        {
+            auto wr32n = [&](uint32_t a, uint32_t v) {
+                uint32_t p = a & PS2_RAM_MASK;
+                if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
+            };
+            // NBD files loaded at: 0xE00000, 0xEBA000, 0xF2E000, 0xF7B000
+            wr32n(0x264A00, 0x30000030);  // flags
+            wr32n(0x264A04, 0x00E00000);  // → EF01.NBD
+            wr32n(0x264A08, 0);
+            wr32n(0x264A0C, 0);
+
+            wr32n(0x264A10, 0x00000030);
+            wr32n(0x264A14, 0x00EBA000);  // → E00_00.NBD
+            wr32n(0x264A18, 0);
+            wr32n(0x264A1C, 0);
+
+            wr32n(0x264A20, 0x30000030);
+            wr32n(0x264A24, 0x00F2E000);  // → E00_01.NBD
+            wr32n(0x264A28, 0);
+            wr32n(0x264A2C, 0);
+
+            wr32n(0x264A30, 0x00000030);
+            wr32n(0x264A34, 0x00F7B000);  // → E01_00.NBD
+            wr32n(0x264A38, 0);
+            wr32n(0x264A3C, 0);
+
+            printf("[REO] Wired NBD data to scene table at 0x264A00\n");
+            fflush(stdout);
+        }
+
         printf("[REO] Snapshot injection complete.\n");
         fflush(stdout);
     }

@@ -53,9 +53,8 @@ void sub_00129168_0x129168(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
                 uint32_t writePos = dmaBuf + 64; // point past the data
                 memcpy(rdram + ctxPhys + 12, &writePos, 4);
 
-                // Set ctx[8] = command count
-                uint32_t cmdCount = 1;
-                memcpy(rdram + ctxPhys + 8, &cmdCount, 4);
+                // Keep ctx[8] = 0 (entry_129610 checks this:
+                // if ctx[8] != 0 → cleanup path, if ctx[8] == 0 → render path)
 
                 static int lc = 0;
                 if (lc < 5) {
