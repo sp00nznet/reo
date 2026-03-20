@@ -146,14 +146,14 @@ label_1d3dc0:
     // 0x1d3e24: 0xc04a702
     ctx->pc = 0x1D3E24u;
     SET_GPR_U32(ctx, 31, 0x1D3E2Cu);
-    printf("[D3DC0] Calling 129C08(r16=0x%08X)...\n", GPR_U32(ctx, 16)); fflush(stdout);
+    { static int lc=0; if(lc<5) { printf("[D3DC0] Calling 129C08(r16=0x%08X)...\n", GPR_U32(ctx, 16)); fflush(stdout); lc++; } }
     ctx->pc = 0x129C08u;
     {
         const uint32_t __entryPc = ctx->pc;
         sub_00129C08_0x129c08(rdram, ctx, runtime);
         if (ctx->pc == __entryPc) { ctx->pc = 0x1D3E2Cu; }
     }
-    printf("[D3DC0] 129C08 returned pc=0x%08X\n", ctx->pc); fflush(stdout);
+    { static int lc=0; if(lc<5) { printf("[D3DC0] 129C08 returned v0=0x%08X → 1297A0 gets a1=%d\n", GPR_U32(ctx,2), GPR_S32(ctx,2)); fflush(stdout); lc++; } }
     if (ctx->pc != 0x1D3E2Cu) { return; }
     ctx->pc = 0x1D3E2Cu;
     // 0x1d3e2c: 0x40282d
