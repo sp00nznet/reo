@@ -551,9 +551,46 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         wr32f(0x29FDC0, bufAddr);  // write buffer start
         wr32f(0x29FDBC, bufAddr + 0x80000);  // write buffer end
 
-        // Ensure render object table at 0x224C64 has free slots
-        // (sub_0013F8A8 searches for first ZERO entry = free slot)
-        // Don't populate — let the game's render system use it
+        // Inject PCSX2 render object table and data
+        {
+            // Load render object table (256 entries * 64 bytes)
+            FILE* rtf = fopen("tools/ps2_debug/pcsx2_render_table_full.bin", "rb");
+            if (rtf) {
+                uint32_t p = 0x224C64 & PS2_RAM_MASK;
+                fread(rdram + p, 1, 256 * 64, rtf);
+                fclose(rtf);
+                printf("[REO] Injected render object table\n");
+            }
+
+            // Load vtable data
+            FILE* vtf = fopen("tools/ps2_debug/pcsx2_render_vtable.bin", "rb");
+            if (vtf) {
+                uint32_t p = 0x23DA58 & PS2_RAM_MASK;
+                fread(rdram + p, 1, 256, vtf);
+                fclose(vtf);
+            }
+
+            // Load render data buffers to their PCSX2 addresses
+            struct { int idx; uint32_t addr; uint32_t size; } rdbufs[] = {
+                {0, 0xE72540, 272384}, {1, 0xE6A3C0, 16384}, {2, 0xE6E480, 16384},
+                {3, 0xEBD740, 170148}, {4, 0xEB55C0, 2048},  {5, 0xEB9680, 2048},
+                {6, 0xF04880, 53248},  {7, 0xF007C0, 16384},
+            };
+            for (auto& rb : rdbufs) {
+                char fname[64];
+                snprintf(fname, sizeof(fname), "tools/ps2_debug/pcsx2_renderdata_%d.bin", rb.idx);
+                FILE* rdf = fopen(fname, "rb");
+                if (rdf) {
+                    uint32_t p = rb.addr & PS2_RAM_MASK;
+                    if (p + rb.size <= PS2_RAM_SIZE) {
+                        fread(rdram + p, 1, rb.size, rdf);
+                    }
+                    fclose(rdf);
+                }
+            }
+            printf("[REO] Injected 8 render data buffers (536KB)\n");
+            fflush(stdout);
+        }
 
         extern void entry_1d2280_0x1d25b0(uint8_t*, R5900Context*, PS2Runtime*);
         R5900Context saved = *ctx;
