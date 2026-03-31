@@ -1,0 +1,47 @@
+#include "ps2_runtime_macros.h"
+#include "ps2_runtime.h"
+#include "ps2_recompiled_functions.h"
+#include "ps2_recompiled_stubs.h"
+
+#include "ps2_syscalls.h"
+#include "ps2_stubs.h"
+
+// Function: sub_001F343C
+// Address: 0x1f343c - 0x1f3464
+void sub_001F343C_0x1f343c(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
+
+    ctx->pc = 0x1f343cu;
+
+    // 0x1f343c: 0x27bdfff0
+    ctx->pc = 0x1f343cu;
+    SET_GPR_S32(ctx, 29, ADD32(GPR_U32(ctx, 29), 4294967280));
+    // 0x1f3440: 0xffbe0000
+    ctx->pc = 0x1f3440u;
+    WRITE64(ADD32(GPR_U32(ctx, 29), 0), GPR_U64(ctx, 30));
+    // 0x1f3444: 0x3a0f02d
+    ctx->pc = 0x1f3444u;
+    SET_GPR_U64(ctx, 30, (uint64_t)GPR_U64(ctx, 29) + (uint64_t)GPR_U64(ctx, 0));
+    // 0x1f3448: 0x80102d
+    ctx->pc = 0x1f3448u;
+    SET_GPR_U64(ctx, 2, (uint64_t)GPR_U64(ctx, 4) + (uint64_t)GPR_U64(ctx, 0));
+    // 0x1f344c: 0x8c420024
+    ctx->pc = 0x1f344cu;
+    SET_GPR_U32(ctx, 2, READ32(ADD32(GPR_U32(ctx, 2), 36)));
+    // 0x1f3450: 0x3c0e82d
+    ctx->pc = 0x1f3450u;
+    SET_GPR_U64(ctx, 29, (uint64_t)GPR_U64(ctx, 30) + (uint64_t)GPR_U64(ctx, 0));
+    // 0x1f3454: 0xdfbe0000
+    ctx->pc = 0x1f3454u;
+    SET_GPR_U64(ctx, 30, READ64(ADD32(GPR_U32(ctx, 29), 0)));
+    // 0x1f3458: 0x27bd0010
+    ctx->pc = 0x1f3458u;
+    SET_GPR_S32(ctx, 29, ADD32(GPR_U32(ctx, 29), 16));
+    // 0x1f345c: 0x3e00008
+    ctx->pc = 0x1F345Cu;
+    {
+        uint32_t jumpTarget = GPR_U32(ctx, 31);
+        ctx->pc = jumpTarget;
+        return;
+    }
+    ctx->pc = 0x1F3464u;
+}

@@ -1,0 +1,43 @@
+#include "ps2_runtime_macros.h"
+#include "ps2_runtime.h"
+#include "ps2_recompiled_functions.h"
+#include "ps2_recompiled_stubs.h"
+
+#include "ps2_syscalls.h"
+#include "ps2_stubs.h"
+
+// Function: sub_00114440
+// Address: 0x114440 - 0x114460
+void sub_00114440_0x114440(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtime) {
+
+    ctx->pc = 0x114440u;
+
+    // 0x114440: 0x24030022
+    ctx->pc = 0x114440u;
+    SET_GPR_S32(ctx, 3, ADD32(GPR_U32(ctx, 0), 34));
+    // 0x114444: 0xc
+    ctx->pc = 0x114444u;
+    runtime->handleSyscall(rdram, ctx, 0x0u);
+    // 0x114448: 0x3e00008
+    ctx->pc = 0x114448u;
+    {
+        uint32_t jumpTarget = GPR_U32(ctx, 31);
+        ctx->pc = jumpTarget;
+        return;
+    }
+    ctx->pc = 0x114450u;
+    // 0x114450: 0x24030023
+    ctx->pc = 0x114450u;
+    SET_GPR_S32(ctx, 3, ADD32(GPR_U32(ctx, 0), 35));
+    // 0x114454: 0xc
+    ctx->pc = 0x114454u;
+    runtime->handleSyscall(rdram, ctx, 0x0u);
+    // 0x114458: 0x3e00008
+    ctx->pc = 0x114458u;
+    {
+        uint32_t jumpTarget = GPR_U32(ctx, 31);
+        ctx->pc = jumpTarget;
+        return;
+    }
+    ctx->pc = 0x114460u;
+}

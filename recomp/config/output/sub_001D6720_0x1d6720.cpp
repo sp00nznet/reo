@@ -763,6 +763,29 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         // (texture collage removed — title screen framebuffer replaces it)
     }
 
+    // Demo trigger at frame 7
+    static bool demoTriggered = false;
+    if (!demoTriggered && frameCount == 7) {
+        demoTriggered = true;
+        printf("[REO] === DEMO TRIGGER (frame %u) ===\n", frameCount); fflush(stdout);
+        extern void sub_00114420_0x114420(uint8_t*, R5900Context*, PS2Runtime*);
+        extern void sub_00114440_0x114440(uint8_t*, R5900Context*, PS2Runtime*);
+        R5900Context dc_val = *ctx; R5900Context* dc = &dc_val;
+        dc->pc = 0x1CBD00; SET_GPR_U32(dc, 31, 0x1D6720);
+        uint32_t dsp = GPR_U32(dc, 29);
+        SET_GPR_U32(dc, 4, dsp + 96);
+        uint32_t tp = (dsp + 96) & PS2_RAM_MASK;
+        uint32_t vals[] = {0, 0x1CB9A0, 0x33DA10, 8192, 0x261CF0, 4};
+        for (int i = 0; i < 6; i++) memcpy(rdram + tp + i*4, &vals[i], 4);
+        sub_00114420_0x114420(rdram, dc, runtime);
+        uint32_t tid = GPR_U32(dc, 2);
+        memcpy(rdram + (0x235FF8u & PS2_RAM_MASK), &tid, 4);
+        printf("[REO] Demo thread id=%d\n", (int32_t)tid);
+        SET_GPR_U32(dc, 4, tid); SET_GPR_U64(dc, 5, 0);
+        sub_00114440_0x114440(rdram, dc, runtime);
+        printf("[REO] StartThread=%d\n", (int32_t)GPR_U32(dc, 2)); fflush(stdout);
+    }
+
     // Return 1 (frame ready) and set pc = $ra
     setReturnU32(ctx, 1);
     ctx->pc = getRegU32(ctx, 31);
