@@ -18,6 +18,8 @@
 #include "ps2_stubs.h"
 #include "reo_hw_bridge.h"
 #include "runtime/input/input.h"
+#include "formats/nbd_parser.h"
+#include "formats/nbd_renderer.h"
 #include <cstdio>
 #include <cstring>
 #include <chrono>
@@ -278,6 +280,50 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
 
         printf("[REO] Snapshot injection complete.\n");
         fflush(stdout);
+    }
+
+    // Render NBD geometry with textures (proof of concept)
+    {
+        static reo::NbdRenderer* s_nbdRenderer = nullptr;
+        static bool s_nbdLoadAttempted = false;
+
+        // Load on first frame after snapshot (frame 6+)
+        if (!s_nbdLoadAttempted && frameCount >= 7) {
+            s_nbdLoadAttempted = true;
+
+            // Load E00_00.NBD (main menu room) from NETBIO archive
+            NetbioReader netbio;
+            if (netbio.open("game_data/NETBIO00.DAT")) {
+                std::vector<NetbioEntry> romdata;
+                int romCount = netbio.parse_inner_afs(0, romdata);
+                if (romCount > 1) {
+                    // Load E00_00.NBD (index 1 in romdata)
+                    std::vector<uint8_t> nbd_buf(romdata[1].size);
+                    FILE* datf = fopen("game_data/NETBIO00.DAT", "rb");
+                    if (datf) {
+                        fseek(datf, romdata[1].offset, SEEK_SET);
+                        fread(nbd_buf.data(), 1, romdata[1].size, datf);
+                        fclose(datf);
+
+                        s_nbdRenderer = new reo::NbdRenderer();
+                        if (!s_nbdRenderer->load(nbd_buf.data(), (uint32_t)nbd_buf.size())) {
+                            delete s_nbdRenderer;
+                            s_nbdRenderer = nullptr;
+                            printf("[REO] NBD renderer load failed\n");
+                        } else {
+                            printf("[REO] NBD renderer ready: %d textures\n",
+                                   s_nbdRenderer->texture_count());
+                        }
+                    }
+                }
+                netbio.close();
+            }
+        }
+
+        // Render each frame
+        if (s_nbdRenderer) {
+            s_nbdRenderer->render();
+        }
     }
 
     // (Old test rendering removed)
