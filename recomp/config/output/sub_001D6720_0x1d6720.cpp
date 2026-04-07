@@ -809,27 +809,68 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
         // (texture collage removed — title screen framebuffer replaces it)
     }
 
-    // Demo trigger at frame 7
+    // Demo scene — invoke directly since PS2Recomp threading is cooperative
+    // and the main thread never yields to let the demo thread run
     static bool demoTriggered = false;
+    static bool demoRunning = false;
+    static int demoIter = 0;
     if (!demoTriggered && frameCount == 7) {
         demoTriggered = true;
-        printf("[REO] === DEMO TRIGGER (frame %u) ===\n", frameCount); fflush(stdout);
-        extern void sub_00114420_0x114420(uint8_t*, R5900Context*, PS2Runtime*);
-        extern void sub_00114440_0x114440(uint8_t*, R5900Context*, PS2Runtime*);
-        R5900Context dc_val = *ctx; R5900Context* dc = &dc_val;
-        dc->pc = 0x1CBD00; SET_GPR_U32(dc, 31, 0x1D6720);
-        uint32_t dsp = GPR_U32(dc, 29);
-        SET_GPR_U32(dc, 4, dsp + 96);
-        uint32_t tp = (dsp + 96) & PS2_RAM_MASK;
-        uint32_t vals[] = {0, 0x1CB9A0, 0x33DA10, 8192, 0x261CF0, 4};
-        for (int i = 0; i < 6; i++) memcpy(rdram + tp + i*4, &vals[i], 4);
-        sub_00114420_0x114420(rdram, dc, runtime);
-        uint32_t tid = GPR_U32(dc, 2);
-        memcpy(rdram + (0x235FF8u & PS2_RAM_MASK), &tid, 4);
-        printf("[REO] Demo thread id=%d\n", (int32_t)tid);
-        SET_GPR_U32(dc, 4, tid); SET_GPR_U64(dc, 5, 0);
-        sub_00114440_0x114440(rdram, dc, runtime);
-        printf("[REO] StartThread=%d\n", (int32_t)GPR_U32(dc, 2)); fflush(stdout);
+        demoRunning = true;
+        demoIter = 0;
+
+        // Clear thread ID at 0x235FF8 — the state machine skips if this is -1
+        uint32_t zero = 0;
+        memcpy(rdram + (0x235FF8u & PS2_RAM_MASK), &zero, 4);
+
+        // Set scene data pointer at 0x34C7F0 to our loaded NBD data
+        // E00_00.NBD (room) was loaded at 0xEBA000
+        {
+            auto wr32 = [&](uint32_t a, uint32_t v) {
+                uint32_t p = a & PS2_RAM_MASK;
+                if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
+            };
+            wr32(0x34C7F0, 0x00EBA000); // Scene data → E00_00.NBD
+            printf("[REO] Set scene data ptr 0x34C7F0 = 0x00EBA000 (E00_00.NBD)\n");
+        }
+
+        printf("[REO] === DEMO SCENE START (frame %u) ===\n", frameCount);
+        fflush(stdout);
+    }
+
+    // Call demo state machine once per frame (instead of in a separate thread)
+    if (demoRunning && demoIter < 600) { // Run for up to 10 seconds (600 frames)
+        extern void sub_001CB8F0_0x1cb8f0(uint8_t*, R5900Context*, PS2Runtime*);
+        R5900Context dc_val = *ctx;
+        R5900Context* dc = &dc_val;
+        dc->pc = 0x1CB8F0u;
+        SET_GPR_U32(dc, 31, 0); // Return address = 0 (we handle return)
+
+        // Check state before calling
+        uint32_t tid_before = READ32(0x235FF8u & PS2_RAM_MASK);
+        if (demoIter < 5) {
+            printf("[DEMO] pre-call: threadID@235FF8=0x%08X, 34D9F8=0x%08X, 34DA00=0x%08X, 34C7F0=0x%08X\n",
+                   tid_before,
+                   READ32(0x34D9F8u & PS2_RAM_MASK),
+                   READ32(0x34DA00u & PS2_RAM_MASK),
+                   READ32(0x34C7F0u & PS2_RAM_MASK));
+            fflush(stdout);
+        }
+
+        sub_001CB8F0_0x1cb8f0(rdram, dc, runtime);
+
+        uint32_t v0 = GPR_U32(dc, 2);
+        if (demoIter < 10 || demoIter % 60 == 0) {
+            printf("[DEMO] iter=%d v0=0x%X pc=0x%08X\n", demoIter, v0, dc->pc);
+            fflush(stdout);
+        }
+        demoIter++;
+
+        // If state machine signals completion
+        if (v0 != 0 && demoIter > 1) {
+            printf("[DEMO] State machine completed at iter=%d v0=0x%X\n", demoIter, v0);
+            demoRunning = false;
+        }
     }
 
     // Return 1 (frame ready) and set pc = $ra
