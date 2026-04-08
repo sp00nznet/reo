@@ -78,8 +78,17 @@ label_1cbdfc:
 
         static int loadLog = 0;
         if (loadLog < 3) {
+            // Also check the lookup table at 0x259D08 that sub_001E5008 reads
+            uint32_t table_val = READ32((0x259D08u + GPR_U32(ctx, 4) * 4) & PS2_RAM_MASK);
             printf("[SCENE-INIT] Loading scene: a0=0x%08X a1=0x%08X a2=0x%08X a3=0x%08X\n",
                    GPR_U32(ctx, 4), GPR_U32(ctx, 5), GPR_U32(ctx, 6), GPR_U32(ctx, 7));
+            printf("[SCENE-INIT]   lookup[a0] at 0x%08X = 0x%08X\n",
+                   0x259D08 + GPR_U32(ctx, 4) * 4, table_val);
+            // Scan full table for populated entries
+            for (int ti = 0; ti < 32; ti++) {
+                uint32_t tv = READ32((0x259D08u + ti * 4) & PS2_RAM_MASK);
+                if (tv != 0) printf("[SCENE-INIT]   lookup[%d] = 0x%08X\n", ti, tv);
+            }
             loadLog++;
         }
         SET_GPR_U32(ctx, 31, 0x1CBE1Cu);
@@ -94,7 +103,17 @@ label_1cbdfc:
     {
         static int resultLog = 0;
         if (resultLog < 3) {
+            // Read error code that sub_001E5008 stored at gp-0x7FE0
+            // gp is typically 0x2B0000, so gp+0x8020 = gp-0x7FE0 ≈ various
+            // The function stores codes 100-106 before returning -1
             printf("[SCENE-INIT] Load result: v0=0x%08X\n", GPR_U32(ctx, 2));
+            // Also check the scene struct's +0x50C field
+            uint32_t scene_struct = READ32((0x259D08u + 4*4) & PS2_RAM_MASK);
+            if (scene_struct) {
+                uint32_t field_50c = READ32((scene_struct + 0x50C) & PS2_RAM_MASK);
+                printf("[SCENE-INIT]   scene_struct=0x%08X, field[0x50C]=0x%08X\n",
+                       scene_struct, field_50c);
+            }
             resultLog++;
         }
     }

@@ -830,8 +830,12 @@ void sub_001D6720_0x1d6720(uint8_t* rdram, R5900Context* ctx, PS2Runtime *runtim
                 uint32_t p = a & PS2_RAM_MASK;
                 if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
             };
-            wr32(0x34C7F0, 0x00EBA000); // Scene data → E00_00.NBD
-            printf("[REO] Set scene data ptr 0x34C7F0 = 0x00EBA000 (E00_00.NBD)\n");
+            // sub_001E5008 checks: a0 must == 1, then reads lookup[1] at 0x259D0C
+            // Copy the scene struct pointer from lookup[4] to lookup[1]
+            uint32_t scene_ptr = READ32(0x259D18u & PS2_RAM_MASK); // lookup[4] = 0x236A08
+            wr32(0x259D0C, scene_ptr);  // Populate lookup[1]
+            wr32(0x34C7F0, 1);          // Scene command = 1 (required by sub_001E5008)
+            printf("[REO] Set scene: lookup[1]=0x%08X, cmd=1\n", scene_ptr);
         }
 
         printf("[REO] === DEMO SCENE START (frame %u) ===\n", frameCount);
