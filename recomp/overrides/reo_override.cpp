@@ -1018,6 +1018,13 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x117818, ps2_stubs::sceSifBindRpc, "sceSifBindRpc (HLE)");
     bind(runtime, 0x117080, ps2_stubs::sceSifBindRpc, "sceSifInitRpc->bind (HLE)");
 
+    // 0x118A70 = the SDK's SifLoadModule. The game loops on it at 0x1ab604
+    // waiting for a non-negative module id while loading its IOP modules
+    // ("cdrom0:\IOP\MODULES\DRIVE.DAT;1", DNAS280.IMG, ...). As real code it
+    // drives raw libsif RPC to an IOP that does not exist here, so route it to
+    // the runtime's module-load HLE. ABI matches: $a0 = path, returns id / -1.
+    bind(runtime, 0x118A70, ps2_stubs::sceSifLoadModule, "SifLoadModule (HLE)");
+
     // ── Boot sequence: GS init ───────────────────────────────────────
     bind(runtime, 0x11D6D0, reo_gs_reset_graph,   "sceGsResetGraph (init)");
     bind(runtime, 0x11DDE8, reo_gs_put_disp_env,  "sceGsPutDispEnv");
@@ -1057,7 +1064,14 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // Without them, DMA channels never initialize and rendering never starts.
     bind(runtime, 0x138208, reo_dma_chan_init,     "sceDmaGetChan/Reset (DMA channel init)");
     bind(runtime, 0x128B18, reo_dma_poll_complete, "DMA channel status poll (return complete)");
-    bind(runtime, 0x19F380, reo_display_init,      "display buffer init (640x448)");
+    // 0x19F380 is NOT just a display-buffer setter. It spans 0x19f380-0x19f430
+    // and its tail CALLS 0x19F430, which is the memory-pool bring-up: it
+    // mallocs ~23MB (via 0x106EE0) and hands it to pool_init (0x189970),
+    // filling the pool descriptor at 0x29FE50 (+0x0 base, +0x14 align, ...).
+    // Stubbing 0x19F380 skipped that, so the pool stayed all-zero, pool_alloc
+    // returned 0 for the 6MB graphics buffer, and the caller then ran
+    // memset(0, 0, 0x5C0000) -- wiping 6MB from guest address 0, including the
+    // libc malloc arena at 0x209800. Every later malloc then span forever.
     bind(runtime, 0x136A80, reo_ret1_log,          "gfx_init_0x136A80");
     bind(runtime, 0x13ADF0, reo_video_mode_init,    "video mode init (NTSC 640x448)");
     bind(runtime, 0x13AE10, reo_gfx_obj_init,      "gfx_obj_init (GIF DMA table init)");
