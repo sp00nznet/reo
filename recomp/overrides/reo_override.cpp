@@ -1115,7 +1115,7 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // These are thread entry points that the recompiler merged into
     // larger functions. Register them so StartThread can find them.
     bind(runtime, 0x11D7F8, reo_ret0,               "SifInit (skip IOP polling)");
-    bind(runtime, 0x115320, reo_sio_thread,         "SIO/pad polling thread");
+    // EXPERIMENT: let the real SIO/pad thread run (was reo_sio_thread).
     bind(runtime, 0x1CB9A0, reo_demo_thread_entry,  "Demo scene thread entry");
 
     // ── Frame timing / VSync ──────────────────────────────────────────
