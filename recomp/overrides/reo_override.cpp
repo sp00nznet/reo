@@ -1025,6 +1025,15 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // the runtime's module-load HLE. ABI matches: $a0 = path, returns id / -1.
     bind(runtime, 0x118A70, ps2_stubs::sceSifLoadModule, "SifLoadModule (HLE)");
 
+    // 0x1AB560 = DNAS bring-up (Sony's Dynamic Network Authentication System:
+    // online auth + disc copy-protection). It loads cdrom0:\IOP\MODULES    // DNAS280.IMG and DRIVE.DAT, then spins waiting on their IOP RPC services
+    // (sid 0x80000003 rpc=1, sid 0x80000006 rpc=0xff). Neither can ever answer
+    // here: DNAS's servers are long dead and DRIVE.DAT authenticates a physical
+    // disc, while we run from extracted files. It is not a rendering
+    // dependency, and its caller (sub_0019F550 at 0x19f558) ignores the return
+    // value and proceeds straight to the memory-pool bring-up at 0x19F430.
+    bind(runtime, 0x1AB560, reo_ret0, "DNAS auth bring-up (bypassed)");
+
     // 0x1179E8 = the SDK's sceSifCallRpc (9 args: client, rpcNum, mode,
     // send/sendSize, recv/recvSize, endFunc, endParam). sub_0011B8B0 uses it
     // to talk to the IOP module just loaded, and loops at 0x1ab654 while it
@@ -1059,10 +1068,14 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // These addresses fall inside larger recompiled functions but are
     // called via indirect dispatch. The recompiler puts them after a
     // return statement so they're dead code. We register them as stubs.
-    bind(runtime, 0x10A9D8, reo_ret0,              "mid_entry_0x10A9D8 (in sub_0010A8C8)");
-    bind(runtime, 0x1AC640, reo_ret0,              "mid_entry_0x1AC640 (in sub_001AC630)");
-    bind(runtime, 0x1395C8, reo_ret0,              "mid_entry_0x1395C8 (in sub_00139568)");
-    bind(runtime, 0x13F998, reo_ret0,              "mid_entry_0x13F998 (in sub_0013F8A8, render)");
+    // The four mid_entry_* bindings that lived here are removed. They date
+    // from the old entry_* slice architecture, where a mid-function address
+    // had its own generated function. Upstream's dense table instead maps
+    // such an address to its PARENT, which resumes via a `switch (ctx->pc)`
+    // prologue -- so binding one to ret0 hijacks a legitimate resume and
+    // returns 0 where the parent should have continued. None of the four
+    // (0x10A9D8, 0x1AC640, 0x1395C8, 0x13F998) has a generated function any
+    // more; 0x1AC640's stale file was deleted during the upstream rebase.
     bind(runtime, 0x37A5A0, reo_ret0,              "overlay_0x37A5A0 (missing overlay func)");
 
     // ── Critical DMA/display init stubs ─────────────────────────────────
@@ -1081,7 +1094,9 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x136A80, reo_ret1_log,          "gfx_init_0x136A80");
     bind(runtime, 0x13ADF0, reo_video_mode_init,    "video mode init (NTSC 640x448)");
     bind(runtime, 0x13AE10, reo_gfx_obj_init,      "gfx_obj_init (GIF DMA table init)");
-    bind(runtime, 0x12B638, reo_ret1_log,          "render_init_0x12B638");
+    // 0x12B638 is a real render init, not a stub: it sets up the globals at
+    // 0x210450/0x210454/0x21049C that the render path polls (sub_0012BF98's
+    // helper at 0x12c018 spins on 0x21049C). Leaving it as ret0 stalls render.
     bind(runtime, 0x13CB30, reo_ret1_log,          "render_init_0x13CB30");
     bind(runtime, 0x15E6A0, reo_ret1_log,          "hw_init_0x15E6A0");
     bind(runtime, 0x12A1E8, reo_ret1_log,          "hw_init_0x12A1E8");
@@ -1104,7 +1119,14 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // sub_001D6720 is the VSync frame check in the main loop.
     // Without this override, the game busy-waits forever reading a
     // VBlank counter that never changes (no GS hardware).
-    bind(runtime, 0x1D6720, reo_frame_check,        "VSync frame check (main loop)");
+    // 0x1D6720 (the main loop's VSync frame check) is no longer overridden.
+    // The old comment here said the game "busy-waits forever reading a VBlank
+    // counter that never changes (no GS hardware)" -- that was true of the
+    // puppet-era runtime. Upstream's EE scheduler now keeps a real vsync tick
+    // and toggles GS_CSR FIELD every vblank, so the real function advances.
+    // reo_frame_check also carried the puppet scaffold (PCSX2 snapshot
+    // injection + force-creating the demo thread), which self-execution must
+    // not depend on.
 
     // ── GS sync / render ─────────────────────────────────────────────
     bind(runtime, 0x1F73B0, reo_gs_sync,           "sceGsSyncPath (render)");
@@ -1175,7 +1197,11 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x112708, reo_ret0, "gs_0x112708");
     bind(runtime, 0x112B98, reo_ret0, "gs_0x112B98");
     bind(runtime, 0x113010, reo_ret0, "gs_0x113010");
-    bind(runtime, 0x1133F0, reo_ret1, "gs_0x1133F0 (sync/poll)");
+    // 0x1133F0 polls GS_CSR (0x12001000) bit 13 = FIELD and returns non-zero
+    // while the field has not flipped. It was bound to reo_ret1 back when the
+    // runtime never toggled FIELD; that now makes sub_0019F380 spin forever at
+    // 0x19f3f0 (`bnez $v0` loops WHILE non-zero). Upstream's EE scheduler
+    // toggles CSR bit 13 every vblank, so the real function terminates.
     bind(runtime, 0x113488, reo_ret0, "gs_0x113488");
     bind(runtime, 0x113988, reo_ret0, "gs_0x113988");
     bind(runtime, 0x113BA8, reo_ret0, "gs_0x113BA8");
