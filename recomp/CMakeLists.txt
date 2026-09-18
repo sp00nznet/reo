@@ -11,7 +11,7 @@ project(reo_recomp CXX)
 
 # PS2Recomp paths (shared between both targets)
 set(PS2RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/PS2Recomp")
-set(PS2RECOMP_BUILD "${PS2RECOMP_DIR}/out/build")
+set(PS2RECOMP_BUILD "${PS2RECOMP_DIR}/out/build-upstream")
 
 # REO runtime sources (hardware emulation subsystems)
 set(REO_RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../runtime")
@@ -20,6 +20,7 @@ set(PS2RECOMP_INCLUDES
     "${PS2RECOMP_DIR}/ps2xRuntime/include"
     "${PS2RECOMP_DIR}/ps2xRuntime/src/lib/Kernel"
     "${PS2RECOMP_DIR}/ps2xRecomp/include"
+    "${PS2RECOMP_DIR}/ps2xIOP/include"
     "${PS2RECOMP_BUILD}/_deps/elfio-src/include"
     "${PS2RECOMP_BUILD}/_deps/fmt-src/include"
     "${PS2RECOMP_BUILD}/_deps/raylib-src/src"
@@ -27,6 +28,7 @@ set(PS2RECOMP_INCLUDES
 
 set(PS2RECOMP_LIBS
     "${PS2RECOMP_BUILD}/ps2xRuntime/Release/ps2_runtime.lib"
+    "${PS2RECOMP_BUILD}/ps2xIOP/Release/ps2_iop.lib"
     "${PS2RECOMP_BUILD}/_deps/raylib-build/raylib/Release/raylib.lib"
     "${PS2RECOMP_BUILD}/_deps/raylib-build/raylib/external/glfw/src/glfw.dir/Release/glfw.lib"
     "${PS2RECOMP_BUILD}/_deps/fmt-build/Release/fmt.lib"

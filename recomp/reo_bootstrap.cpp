@@ -24,9 +24,11 @@
 
 namespace fs = std::filesystem;
 
-// Function registration — defined in each game's generated register_functions.cpp
-// The active build target (file1 or file2) provides the implementation.
-extern void registerAllFunctions(PS2Runtime& runtime);
+// Recompiled functions are no longer registered by a call: the generated
+// register_functions.cpp defines a dense address-indexed table
+// (g_ps2RecompiledFunctionTable) populated by a static initializer, which
+// the runtime indexes directly. Mid-function addresses resolve to their
+// parent, which resumes via its `switch (ctx->pc)` prologue.
 
 // Overlay function registration — runtime-loaded code dumped from PCSX2
 extern void registerOverlayFunctions(PS2Runtime& runtime);
@@ -140,19 +142,18 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Register all recompiled functions
-    printf("[BOOT] Registering recompiled functions...\n");
-    registerAllFunctions(runtime);
     printf("[BOOT] Registering overlay functions (runtime-loaded code)...\n");
     registerOverlayFunctions(runtime);
     printf("[BOOT] All functions registered.\n");
 
     // Re-apply game overrides AFTER function registration.
-    // loadELF() applies them first, but registerAllFunctions() overwrites
+    // loadELF() applies them first, but function registration overwrites
     // our custom handlers with the generated stubs. This second pass ensures
     // our overrides take precedence over generated code.
     printf("[BOOT] Applying game overrides (post-registration)...\n");
-    ps2_game_overrides::applyMatching(runtime, elf_path, g.entry_point);
+    // crc32=0/invalid: both REO descriptors register crc32==0, so applyMatching
+    // skips the CRC check entirely and matches on elf name + entry point.
+    ps2_game_overrides::applyMatching(runtime, elf_path, g.entry_point, 0u, false);
 
     // Begin execution
     printf("[BOOT] Starting execution at entry point 0x%08X...\n", g.entry_point);
