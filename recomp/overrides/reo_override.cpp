@@ -1088,11 +1088,16 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
 
     // ── GS sync / render ─────────────────────────────────────────────
     bind(runtime, 0x1F73B0, reo_gs_sync,           "sceGsSyncPath (render)");
-    bind(runtime, 0x105BD0, reo_gs_sync_v,         "sceGsSyncV");
+    // 0x105BD0 is NOT sceGsSyncV -- it is heap sbrk/malloc_extend_top: it takes
+    // the malloc lock (0x107D28), computes the arena base 0x210000-0x6800 =
+    // 0x209800, reads the arena top chunk at [base+8] and rounds the request up
+    // to 4KB pages. Stubbing it means the heap can never grow.
 
-    // ── Additional stubs near GS area (0x107xxx-0x118xxx) ────────────
-    bind(runtime, 0x107D28, reo_ret0,             "gs_related_0x107D28");
-    bind(runtime, 0x107DA8, reo_ret0,             "gs_related_0x107DA8");
+    // ── Additional stubs near GS area (0x118xxx) ─────────────────────
+    // 0x107D28 / 0x107DA8 were listed here as "gs_related" only because they
+    // sit near the GS address range. They are libc heap code, not GS:
+    // 0x107D28 is __malloc_lock (GetThreadId + WaitSema recursive mutex) and
+    // 0x107DA8 is its unlock. Stubbing them to ret0 breaks the allocator.
     bind(runtime, 0x118170, reo_ret0,             "gs_related_0x118170");
     bind(runtime, 0x1181F8, reo_ret0,             "gs_related_0x1181F8");
     bind(runtime, 0x1187A0, reo_ret0,             "gs_related_0x1187A0");
@@ -1175,7 +1180,6 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bindNamed(runtime, 0x11DDE8, "sceGsPutDispEnv");
     bindNamed(runtime, 0x11DF60, "sceGsResetPath");
     bindNamed(runtime, 0x11E1A0, "sceGsSyncPath");
-    bindNamed(runtime, 0x105BD0, "sceGsSyncV");
     bindNamed(runtime, 0x11CF08, "sceCdInit");
 
     printf("[REO] File #1 overrides applied (%d bindings).\n", 80);
