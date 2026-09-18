@@ -13,6 +13,13 @@ thread_entries = [
   "0x0012AD70",   # render worker (CreateThread from 0x12B3C4)
   "0x0012AE50",   # render worker (CreateThread from 0x12B44C)
   "0x00115320",   # SIO/pad polling thread
+  # Indirect-call targets (JALR) that discovery also misses -- same problem,
+  # same mechanism. 0x10A9D8 is called via JALR from 0x10518C; without a slot
+  # the runtime reports [guest-branch:missing-target] and the call dies.
+  "0x0010A9D8",
+  "0x001395C8",
+  "0x0013F998",
+  "0x001AC640",
 ]
 
 [general]
