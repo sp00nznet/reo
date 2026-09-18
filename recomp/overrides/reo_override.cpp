@@ -1025,6 +1025,12 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // the runtime's module-load HLE. ABI matches: $a0 = path, returns id / -1.
     bind(runtime, 0x118A70, ps2_stubs::sceSifLoadModule, "SifLoadModule (HLE)");
 
+    // 0x1179E8 = the SDK's sceSifCallRpc (9 args: client, rpcNum, mode,
+    // send/sendSize, recv/recvSize, endFunc, endParam). sub_0011B8B0 uses it
+    // to talk to the IOP module just loaded, and loops at 0x1ab654 while it
+    // returns 0. As real code it drives raw SBUS DMA; route it to the HLE.
+    bind(runtime, 0x1179E8, ps2_syscalls::sceSifCallRpc, "sceSifCallRpc (HLE)");
+
     // ── Boot sequence: GS init ───────────────────────────────────────
     bind(runtime, 0x11D6D0, reo_gs_reset_graph,   "sceGsResetGraph (init)");
     bind(runtime, 0x11DDE8, reo_gs_put_disp_env,  "sceGsPutDispEnv");
@@ -1118,7 +1124,10 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x118A38, reo_ret0,             "gs_related_0x118A38");
 
     // ── SDK library stubs (0x11Bxxx-0x11Exxx) ────────────────────────
-    bind(runtime, 0x11B828, reo_ret0,             "lib_stub_0x11B828");
+    // 0x11B828 is the IOP-service handle initialiser, not a dead lib stub: it
+    // writes the handle at 0x209DF8, which the ELF ships as -1 ("none"). While
+    // it was stubbed to ret0 the handle stayed -1, so sub_0011B8B0's `bltz`
+    // guard made it return 0 and the caller spun forever at 0x1ab654.
     bind(runtime, 0x11BF08, reo_ret0,             "lib_stub_0x11BF08");
     bind(runtime, 0x11D6D0, reo_gs_reset_graph,   "sceGsResetGraph");  // already bound above
 
