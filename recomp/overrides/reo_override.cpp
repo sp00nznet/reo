@@ -1043,7 +1043,10 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // ── Boot sequence: GS init ───────────────────────────────────────
     bind(runtime, 0x11D6D0, reo_gs_reset_graph,   "sceGsResetGraph (init)");
     bind(runtime, 0x11DDE8, reo_gs_put_disp_env,  "sceGsPutDispEnv");
-    bind(runtime, 0x11DF60, reo_gs_reset_path,     "sceGsResetPath");
+    // 0x11DF60 ("sceGsResetPath") calls AddIntcHandler (0x114300/0x114310):
+    // it registers the GS/VBlank interrupt handler. While stubbed, no INTC
+    // handler existed, so the EE scheduler had nothing to dispatch on vblank
+    // and the render thread's SleepThread (syscall 0x32) was never woken.
     bind(runtime, 0x11E1A0, reo_gs_sync_path,      "sceGsSyncPath");
     bind(runtime, 0x118110, reo_gs_reset_graph,    "sceGsResetGraph (alt)");
 
@@ -1227,7 +1230,6 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // If they fail, the stubs above (reo_ret0) still cover the addresses.
     bindNamed(runtime, 0x11D6D0, "sceGsResetGraph");
     bindNamed(runtime, 0x11DDE8, "sceGsPutDispEnv");
-    bindNamed(runtime, 0x11DF60, "sceGsResetPath");
     bindNamed(runtime, 0x11E1A0, "sceGsSyncPath");
     bindNamed(runtime, 0x11CF08, "sceCdInit");
 
