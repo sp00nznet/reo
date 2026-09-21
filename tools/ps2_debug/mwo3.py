@@ -20,7 +20,14 @@ def unpack(C):
             if L == 0:
                 if ci + 2 > len(C): return bytes(out)
                 L = W(ci) * 2; ci += 2
-            if D == 0 or D > len(out): return bytes(out)
+            if D == 0:
+                # Matches the game's own decoder at 0x1AF618/0x1AF628: dist==0
+                # with len==0 terminates, dist==0 with a length emits a run of
+                # zero words. Treating dist==0 as "end" truncates such a stream.
+                if L == 0: return bytes(out)
+                out.extend(bytes(L))
+                continue
+            if D > len(out): return bytes(out)
             p = len(out)
             for k in range(L): out.append(out[p - D + k])
     return bytes(out)
@@ -52,7 +59,9 @@ if __name__ == '__main__':
             # ps2_recomp already ingests successfully
             from dump_overlays import create_overlay_elf
             q = os.path.join(outdir, h['name'].replace('.bin', '.elf'))
-            create_overlay_elf(img, h['addr'], q)
+            # text only -- handing the recompiler the data section too makes it
+            # decode data as code and emit a multi-megabyte runaway function
+            create_overlay_elf(img[0x40:0x40 + h['text']], h['addr'] + 0x40, q)
             print('    -> %s' % q)
         elif outdir:
             q = os.path.join(outdir, h['name'])

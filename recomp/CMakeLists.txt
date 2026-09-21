@@ -7,6 +7,11 @@
 # Both share the bootstrap, overrides, runtime HLE, and link against PS2Recomp runtime.
 
 cmake_minimum_required(VERSION 3.20)
+
+# Compile parallelism. Was hard-coded /MP4 "to avoid OOM"; each cl instance on
+# the larger generated files peaks around 2 GB, so 8 needs ~16 GB. Lower this on
+# a memory-constrained machine: -DREO_COMPILE_JOBS=4
+set(REO_COMPILE_JOBS "8" CACHE STRING "Number of parallel cl.exe jobs (MSVC /MP)")
 project(reo_recomp CXX)
 
 # PS2Recomp paths (shared between both targets)
@@ -55,17 +60,25 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
         return()
     endif()
 
-    # Overlay functions (runtime-loaded code dumped from PCSX2)
-    set(OVERLAY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/config/output_overlay")
-    if(EXISTS "${OVERLAY_DIR}")
-        file(GLOB OVERLAY_SOURCES "${OVERLAY_DIR}/*.cpp")
-        list(LENGTH OVERLAY_SOURCES OVERLAY_COUNT)
-        if(OVERLAY_COUNT GREATER 0)
-            message(STATUS "REO [${TARGET_NAME}]: Found ${OVERLAY_COUNT} overlay source files")
+    # Overlay functions. One dir per overlay: output_overlay is submain.bin
+    # (0x370000), output_netdnas is netdnas.bin (0x6E0000). Both are extracted
+    # from game_data/BIN/*.DAT by tools/ps2_debug/mwo3.py. Globbing the dirs
+    # means a new overlay needs no edit here.
+    set(OVERLAY_SOURCES "")
+    set(OVERLAY_INCLUDES "")
+    file(GLOB OVERLAY_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/config/output_overlay"
+                           "${CMAKE_CURRENT_SOURCE_DIR}/config/output_netdnas")
+    foreach(_ovl_dir ${OVERLAY_DIRS})
+        if(IS_DIRECTORY "${_ovl_dir}")
+            file(GLOB _ovl_srcs "${_ovl_dir}/*.cpp")
+            list(LENGTH _ovl_srcs _ovl_count)
+            if(_ovl_count GREATER 0)
+                list(APPEND OVERLAY_SOURCES ${_ovl_srcs})
+                list(APPEND OVERLAY_INCLUDES "${_ovl_dir}")
+                message(STATUS "REO [${TARGET_NAME}]: Found ${_ovl_count} overlay sources in ${_ovl_dir}")
+            endif()
         endif()
-    else()
-        set(OVERLAY_SOURCES "")
-    endif()
+    endforeach()
 
     add_executable(${TARGET_NAME}
         reo_bootstrap.cpp
@@ -85,7 +98,7 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
     target_include_directories(${TARGET_NAME} PRIVATE
         ${PS2RECOMP_INCLUDES}
         "${CMAKE_CURRENT_SOURCE_DIR}/config/${OUTPUT_DIR}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/config/output_overlay"
+        ${OVERLAY_INCLUDES}
         "${CMAKE_CURRENT_SOURCE_DIR}/overrides"
         "${CMAKE_CURRENT_SOURCE_DIR}/.."
         "${CMAKE_CURRENT_SOURCE_DIR}/../game"
@@ -106,7 +119,7 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
         target_compile_options(${TARGET_NAME} PRIVATE
             /W0           # Disable warnings for generated code
             /bigobj       # Generated files can be large
-            /MP4          # Parallel compilation (limit to 4 cores to avoid OOM)
+            /MP${REO_COMPILE_JOBS}  # Parallel compilation; see REO_COMPILE_JOBS above
             /O2           # Optimize
         )
     endif()
