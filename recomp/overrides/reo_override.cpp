@@ -1220,7 +1220,11 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
 
     // Peripheral/input related
     bind(runtime, 0x115EF0, reo_ret0, "periph_0x115EF0");
-    bind(runtime, 0x116848, reo_ret0, "periph_0x116848");
+    // 0x116848 was stubbed as a "peripheral" but it is an sprintf/vsprintf:
+    // varargs prologue, and it swaps the output-sink pointer at [0x209D44].
+    // The archive loader uses it to build filenames ("r%03d.dir" at 0x242618),
+    // so stubbing it meant no filename was ever produced and no file was ever
+    // opened -- CDVD mapped 85 files and read_file was never called once.
     bind(runtime, 0x116920, reo_ret0, "periph_0x116920");
     bind(runtime, 0x116BA0, reo_ret0, "periph_0x116BA0");
     bind(runtime, 0x117220, reo_ret0, "periph_0x117220");
