@@ -581,6 +581,82 @@ thread_entries = [
   "0x001DA450",
   "0x001E7E88",
   "0x001F3E00",
+  # Function-pointer table entries. Found by scanning every aligned word in
+  # the ELF that lands on an "addiu sp,sp,-N" prologue and is never the target
+  # of a JAL. These are reached only through jalr on a table slot, so discovery
+  # cannot see them. 0x1C9950/0x1CA3F0/0x1CB080 are the network state machine
+  # dispatched from the table at 0x235FD8 by the jalr at 0x1C991C.
+  "0x00115FE0",   # indirect entry, ptr at 0x209d44
+  "0x001312C0",   # indirect entry, ptr at 0x19e94c
+  "0x001398A0",   # indirect entry, ptr at 0x21cc38
+  "0x00139FE8",   # indirect entry, ptr at 0x21cc30
+  "0x0013A180",   # indirect entry, ptr at 0x21cc58
+  "0x0013B268",   # indirect entry, ptr at 0x21dac8
+  "0x0013BBE8",   # indirect entry, ptr at 0x21dac0
+  "0x0013BCF0",   # indirect entry, ptr at 0x21dae8
+  "0x0013F488",   # indirect entry, ptr at 0x22478c
+  "0x0013F4D0",   # indirect entry, ptr at 0x224780
+  "0x0013F590",   # indirect entry, ptr at 0x224788
+  "0x0013F628",   # indirect entry, ptr at 0x224784
+  "0x0013F720",   # indirect entry, ptr at 0x224790
+  "0x0013FA38",   # indirect entry, ptr at 0x224c4c
+  "0x0013FA88",   # indirect entry, ptr at 0x224c40
+  "0x0013FBF8",   # indirect entry, ptr at 0x224c48
+  "0x0013FD58",   # indirect entry, ptr at 0x224c44
+  "0x0013FEF0",   # indirect entry, ptr at 0x224c50
+  "0x00140288",   # indirect entry, ptr at 0x228c84
+  "0x00140300",   # indirect entry, ptr at 0x228c78
+  "0x00140438",   # indirect entry, ptr at 0x228c80
+  "0x00140590",   # indirect entry, ptr at 0x228c7c
+  "0x00145F50",   # indirect entry, ptr at 0x23df18
+  "0x0015F0B8",   # indirect entry, ptr at 0x22dd00
+  "0x0015F1C0",   # indirect entry, ptr at 0x22dd28
+  "0x00165CB0",   # indirect entry, ptr at 0x2405b8
+  "0x001663B8",   # indirect entry, ptr at 0x240608
+  "0x0016A830",   # indirect entry, ptr at 0x240850
+  "0x0016A9A8",   # indirect entry, ptr at 0x240854
+  "0x00199D50",   # indirect entry, ptr at 0x2302a0
+  "0x00199E70",   # indirect entry, ptr at 0x230360
+  "0x0019A040",   # indirect entry, ptr at 0x230390
+  "0x0019A160",   # indirect entry, ptr at 0x230420
+  "0x0019A370",   # indirect entry, ptr at 0x230300
+  "0x0019A4C0",   # indirect entry, ptr at 0x2303f0
+  "0x0019A610",   # indirect entry, ptr at 0x230490
+  "0x0019A7A0",   # indirect entry, ptr at 0x2304c0
+  "0x0019A960",   # indirect entry, ptr at 0x230200
+  "0x0019AAE0",   # indirect entry, ptr at 0x230230
+  "0x0019ACF0",   # indirect entry, ptr at 0x230270
+  "0x0019AF80",   # indirect entry, ptr at 0x2304f0
+  "0x0019B1C0",   # indirect entry, ptr at 0x230530
+  "0x0019B480",   # indirect entry, ptr at 0x230680
+  "0x0019B6C0",   # indirect entry, ptr at 0x2306c0
+  "0x0019B980",   # indirect entry, ptr at 0x2305a0
+  "0x0019BBD0",   # indirect entry, ptr at 0x2305e0
+  "0x0019BEA0",   # indirect entry, ptr at 0x2306f0
+  "0x0019C0C0",   # indirect entry, ptr at 0x230720
+  "0x0019C2B0",   # indirect entry, ptr at 0x230460
+  "0x0019C4C0",   # indirect entry, ptr at 0x230570
+  "0x0019C760",   # indirect entry, ptr at 0x230750
+  "0x001C6C10",   # indirect entry, ptr at 0x235f84
+  "0x001C9950",   # indirect entry, ptr at 0x235fd8
+  "0x001CA3F0",   # indirect entry, ptr at 0x235fdc
+  "0x001CB080",   # indirect entry, ptr at 0x235fe0
+  "0x001D4CF0",   # indirect entry, ptr at 0x236944
+  "0x001D4D80",   # indirect entry, ptr at 0x236948
+  "0x001D4E20",   # indirect entry, ptr at 0x236950
+  "0x001D4EF0",   # indirect entry, ptr at 0x23694c
+  "0x001D5A88",   # indirect entry, ptr at 0x236988
+  "0x001F4DA0",   # indirect entry, ptr at 0x2373b4
+  "0x001F4E30",   # indirect entry, ptr at 0x2373bc
+  "0x001F5310",   # indirect entry, ptr at 0x2373dc
+  "0x001F54F0",   # indirect entry, ptr at 0x237414
+  "0x001F56D0",   # indirect entry, ptr at 0x23741c
+  "0x001F59C0",   # indirect entry, ptr at 0x2373e4
+  "0x001F6420",   # indirect entry, ptr at 0x237404
+  "0x001F6850",   # indirect entry, ptr at 0x237444
+  "0x001F6B10",   # indirect entry, ptr at 0x237448
+  "0x001F6F50",   # indirect entry, ptr at 0x23744c
+  "0x001F6FC0",   # indirect entry, ptr at 0x237458
 ]
 
 [general]
