@@ -1070,7 +1070,12 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x11F2D8, reo_ret0,             "init_stub_0x11F2D8");
 
     // ── Pad (controller) ─────────────────────────────────────────────
-    bind(runtime, 0x100B70, reo_pad_port_open,     "scePadPortOpen");
+    // 0x100B70 was bound here as "scePadPortOpen". It is not: it takes the
+    // cdvd lock (PollSema on the semaphore at [0x207928]), calls sceSifInitRpc,
+    // and binds SIF RPC service 0x80000595 -- cdvdfsv's read service -- at
+    // 0x100C64. The override returned 1 without running any of that, so the
+    // read service was never bound, every CD read arrived with sid=0, and no
+    // game file could be loaded.
     bind(runtime, 0x1D8560, reo_pad_read,          "scePadRead");
 
     // ── Mid-function entry points (unreachable in recompiled code) ──
