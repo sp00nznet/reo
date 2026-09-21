@@ -1637,49 +1637,18 @@ entries = [
 [patches]
 # Individual instruction patches
 instructions = [
-  { address = "0x1003ac", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1008a4", value = "0x0" },  # Potential self-modifying code
-  { address = "0x100be0", value = "0x0" },  # Potential self-modifying code
-  { address = "0x100ef8", value = "0x0" },  # Potential self-modifying code
-  { address = "0x107d6c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x107ddc", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1280c0", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12842c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x128a04", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12a14c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12a314", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12a338", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12a3b8", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12ac50", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12b72c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12b744", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12b81c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12c030", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12c09c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12c2d4", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12c2ec", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12c3a4", value = "0x0" },  # Potential self-modifying code
-  { address = "0x12c418", value = "0x0" },  # Potential self-modifying code
-  { address = "0x134630", value = "0x0" },  # Potential self-modifying code
-  { address = "0x138dcc", value = "0x0" },  # Potential self-modifying code
-  { address = "0x13e480", value = "0x0" },  # Potential self-modifying code
-  { address = "0x13e714", value = "0x0" },  # Potential self-modifying code
-  { address = "0x13e724", value = "0x0" },  # Potential self-modifying code
-  { address = "0x13f88c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1412f4", value = "0x0" },  # Potential self-modifying code
-  { address = "0x14135c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x15e774", value = "0x0" },  # Potential self-modifying code
-  { address = "0x15e7c4", value = "0x0" },  # Potential self-modifying code
-  { address = "0x15e9ec", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1641c8", value = "0x0" },  # Potential self-modifying code
-  { address = "0x178560", value = "0x0" },  # Potential self-modifying code
-  { address = "0x17cec8", value = "0x0" },  # Potential self-modifying code
-  { address = "0x192c38", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1a7f24", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1bb27c", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1cba34", value = "0x0" },  # Potential self-modifying code
-  { address = "0x1d86e4", value = "0x0" },  # Potential self-modifying code
+  # NOTE: ElfAnalyzer auto-generated 42 entries here, each nop-ing a `sw` with
+  # the comment "Potential self-modifying code". The heuristic is wrong for
+  # this game -- every one of them is an ordinary data store, and nop-ing them
+  # silently deleted real logic. Among the casualties:
+  #   0x12B72C  sw $v0,0($s0)  -> [0x2104E8], main's tid as the render waiter
+  #   0x12C418  sw $zero,...   -> [0x210458], the worker-dispatch gate
+  #   0x12C030, 0x12C2D4       -> the rest of that handshake
+  # With them nop-ed, main slept in the frame wait and no worker could ever
+  # wake it, which looked for a long time like an unreachable initialiser.
+  # Do not re-add without proving the target really is the code segment.
 ]
+
 
 # Performance critical functions (may need manual optimization)
 [performance]
