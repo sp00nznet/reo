@@ -87,3 +87,7 @@ gs_frames/
 
 # Claude local settings
 .claude/
+
+# Recompiled title overlay (regenerate with:
+#   ps2_recomp.exe tools/ps2_debug/overlay_dumps/overlay_config.toml
+# then follow the steps in current-frontier.md)

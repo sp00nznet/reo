@@ -54,6 +54,7 @@ static ReoHwBridge g_hwBridge;
 // ═══════════════════════════════════════════════════════════════════════
 
 // Generic "return 0" handler — used for init functions that just need to succeed
+
 static void reo_ret0(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     setReturnU32(ctx, 0);
     ctx->pc = getRegU32(ctx, 31);
@@ -1090,7 +1091,11 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // returns 0 where the parent should have continued. None of the four
     // (0x10A9D8, 0x1AC640, 0x1395C8, 0x13F998) has a generated function any
     // more; 0x1AC640's stale file was deleted during the upstream rebase.
-    bind(runtime, 0x37A5A0, reo_ret0,              "overlay_0x37A5A0 (missing overlay func)");
+    // The title overlay (0x370000-0x38CD24) is recompiled from
+    // tools/ps2_debug/overlay_dumps/overlay_title.elf and registered by
+    // registerOverlayFunctions() from reo_bootstrap. It matters because
+    // sub_00371A00 JALs func_1CC2D0, the only writer of the coroutine head at
+    // [0x340A40] -- and sub_001CC550's per-frame tick is gated on that word.
 
     // ── Critical DMA/display init stubs ─────────────────────────────────
     // These are PS2 SDK functions the recompiler couldn't decompile.
