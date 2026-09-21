@@ -1016,7 +1016,13 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // 0x117818 = sceSifBindRpc: the game polls client->server (offset 36)
     // until non-zero; SifBindRpc sets it. 0x117080 = the RPC init/handshake.
     bind(runtime, 0x117818, ps2_stubs::sceSifBindRpc, "sceSifBindRpc (HLE)");
-    bind(runtime, 0x117080, ps2_stubs::sceSifBindRpc, "sceSifInitRpc->bind (HLE)");
+    // 0x117080 is sceSifInitRpc, not BindRpc: it takes one argument (mode),
+    // is called once from 0x1008C0 with a0=0, and its caller checks the result
+    // with bgez. Routing it to SifBindRpc made it read a0=0 as the client
+    // pointer, so the bind recorded sid=0/client=0 and every later CallRpc on
+    // that client arrived with sid=0 -- which is why the CD read service could
+    // not be dispatched.
+    bind(runtime, 0x117080, ps2_stubs::sceSifInitRpc, "sceSifInitRpc (HLE)");
 
     // 0x118A70 = the SDK's SifLoadModule. The game loops on it at 0x1ab604
     // waiting for a non-negative module id while loading its IOP modules
