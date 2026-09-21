@@ -448,6 +448,14 @@ void ReoHwBridge::processVif1DmaChain(uint32_t tadr, const uint8_t* rdram) {
 
         switch (id) {
         case 0: // REFE: addr, end chain
+            // Same sentinel REO puts at the head of a display-list buffer as
+            // the GIF walker above handles: REFE/QWC=0 whose ADDR points at
+            // the real chain. Follow it instead of ending on the first tag.
+            if (tagQwc == 0 && i == 0 && addr != 0 && addr != currentTag) {
+                currentTag = addr;
+                dataAddr = 0;
+                break;
+            }
             dataAddr = addr;
             endChain = true;
             break;
@@ -496,6 +504,18 @@ void ReoHwBridge::processVifCommands(const uint8_t* data, uint32_t size, const u
         memcpy(&vifcode, data + pos, 4);
 
         uint8_t cmd = (vifcode >> 24) & 0x7F; // Bits 30:24 (bit 31 = IRQ)
+        // ponytail: REO_TRACE_VIFCMD=1 reports the opcode histogram so a chain
+        // that yields no geometry can be told apart from one never parsed.
+        {
+            static const bool traceVif = [] {
+                const char *v = std::getenv("REO_TRACE_VIFCMD");
+                return v && v[0] != '0';
+            }();
+            static int vifBudget = 120;
+            if (traceVif && vifBudget-- > 0) {
+                fprintf(stderr, "[vifcmd] 0x%02X (vifcode=0x%08X)\n", cmd, vifcode);
+            }
+        }
         uint16_t immediate = vifcode & 0xFFFF;
         uint8_t num = (vifcode >> 16) & 0xFF;
 
