@@ -20,6 +20,13 @@ thread_entries = [
   "0x001395C8",
   "0x0013F998",
   "0x001AC640",
+  # Interrupt handlers passed to AddIntcHandler/AddDmacHandler as data. Same
+  # problem again: no instruction points at them, so they get no slot, and
+  # dispatchIrq drops them silently -- 183 vblanks fired with the handler
+  # registered and never invoked, which is what deadlocked the frame loop.
+  "0x0019F600",   # INTC cause 2  -- VBlank start (inside sub_0019F550)
+  "0x0018CD70",   # INTC cause 0  -- GS           (inside sub_0018CD00)
+  "0x0018D160",   # DMAC cause 1  -- VIF1         (inside sub_0018CFB0)
 ]
 
 [general]
