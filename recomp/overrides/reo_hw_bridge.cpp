@@ -289,15 +289,6 @@ void ReoHwBridge::onDmaStart(uint32_t channelBase, uint32_t madr, uint32_t qwc,
             self->processVif1DmaChain(tadr, rdram);
         }
 
-        // The bridge services this channel end to end, so PS2Memory never sees
-        // a pending VIF1 transfer and never raises the completion. REO waits on
-        // exactly that interrupt: its DMAC cause-1 handler (sub_0018D160) is
-        // what clears the display-list busy flag at 0x29F704/0x29F708, and
-        // without it the submit path spins forever.
-        if (self->m_runtime) {
-            self->m_runtime->memory().signalDmacCompletion(1u); // VIF1
-        }
-
         static int logCount = 0;
         if (logCount < 8) {
             printf("[HW-BRIDGE] VIF1 DMA: madr=0x%08X qwc=%u tadr=0x%08X (total: %llu)\n",
