@@ -87,3 +87,6 @@ gs_frames/
 
 # Claude local settings
 .claude/
+
+# PS2Recomp overlay output: made locally, never committed (REPO_RULES section 3)
+recomp/config/output_overlay/
