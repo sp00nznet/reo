@@ -323,6 +323,9 @@ Render Target → DMA Buffer → Scene DRAW → Scene Builder → GIF→GS ✅
 
 This project contains **no copyrighted game code or assets**. You must provide your own legally obtained copies of Resident Evil Outbreak (SLUS-20765) and/or RE Outbreak: File #2 (SLUS-20984).
 
+The code in this repo is MIT: see [LICENSE](LICENSE). PS2Recomp's output
+(`recomp/config/output*/`) is generated locally from your own disc and never committed.
+
 Resident Evil is a trademark of Capcom. PlayStation is a trademark of Sony. This is an independent fan project created for preservation and educational purposes.
 
 ## Contributing
