@@ -41,7 +41,7 @@ def parse_nbd_chunks(data):
 
 def ob_decompress(src):
     """RE Outbreak 16-bit word LZ77 decompression.
-    Based on OBSld::decompress() from libthanatos/REOF2."""
+    Derived from OBSld::decompress() in libthanatos src/OBSld.cpp (GPL-3.0, see NOTICE)."""
     if len(src) < 2:
         return b''
 

@@ -14,6 +14,7 @@ Third-party code carried in this repository or linked into reo_recomp.exe:
 | Path / component                | Upstream                                   | Version            | Licence              | Text                                  |
 |---------------------------------|--------------------------------------------|--------------------|----------------------|---------------------------------------|
 | third_party/PS2Recomp (submodule) | https://github.com/ran-j/PS2Recomp (via sp00nznet/PS2Recomp, branch reo-on-upstream) | see submodule commit | GPL-3.0          | LICENSE (same text)                   |
+| media/tim2/tim2_loader.cpp (TEX decompress), tools/ps2_debug/dump_nbd_tex.py | https://github.com/Fothsid/libthanatos src/OBSld.cpp | 1c4cfc8 (HEAD when checked, 2026-10-17) | GPL-3.0 | LICENSE (same text) |
 | runtime/gs/stb_image_write.h    | https://github.com/nothings/stb            | v1.16              | MIT or Public Domain | LICENSES/stb-MIT-or-PublicDomain.txt  |
 | raylib (fetched by PS2Recomp, linked) | https://github.com/raysan5/raylib     | 5.5                | Zlib                 | LICENSES/raylib-Zlib.txt              |
 | GLFW (bundled in raylib, linked) | https://github.com/glfw/glfw              | raylib 5.5's copy  | Zlib                 | LICENSES/glfw-Zlib.txt                |
