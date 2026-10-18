@@ -1,96 +1,63 @@
-# Game files - DO NOT COMMIT (legally owned copies only)
+# --- Never committed (REPO_RULES section 3) --------------------------------
+# Generated source: PS2Recomp output for the game ELF and every overlay.
+# You make it locally from your own disc; it is never distributed.
+recomp/config/output*/
+tools/ps2_debug/overlay_dumps/*/
+tools/ps2_debug/overlay_dumps/*.elf
+tools/ps2_debug/overlay_dumps/*_functions.txt
+
+# Game data, disc images, BIOS, memory cards, saves
+game/data/
+game_data*/
+extracted/
+resident-evil-outbreak-file-2*/
 *.iso
 *.ISO
+*.cue
+*.CUE
 *.bin
 *.BIN
 *.MEC
 *.NVM
 *.elf
 *.ELF
+SCPH-*
+mc0/
+mc1/
+saves/
 
-# Build output
+# Emulator captures (game memory / GS streams)
+*.gs
+*.gs.zst
+tools/ps2_debug/pcsx2_*.txt
+
+# --- Build output ---------------------------------------------------------
 build/
+build-farm/
 out/
 cmake-build-*/
 *.o
 *.obj
 *.exe
 *.dll
-*.so
-*.dylib
 *.lib
-*.a
 *.pdb
 *.ilk
 *.exp
+__pycache__/
 
-# IDE
+# --- Local scratch: logs, screenshots, dumps from debugging runs ----------
+scratch/
+*.log
+*.tmp
+
+# --- IDE / OS -------------------------------------------------------------
 .vs/
 .vscode/
 .idea/
-*.suo
 *.user
-*.sln.docstates
 CMakeSettings.json
-
-# PS2Recomp output
-recomp_output/
-*.recomp.cpp
-
-# Extracted game data (generated from ISO)
-extracted/
-game_data/
-game_data_file2/
-
-# Dependencies (fetched by build)
-deps/
-third_party/build/
-
-# OS
 Thumbs.db
 .DS_Store
 desktop.ini
-
-# Misc
-*.log
-*.tmp
-*.swp
-*.swo
-*~
-recomp/config/output/
-recomp/config/output_file2/
-third_party/PS2Recomp/
-game_data/
-game_data_file2/
-game_data_ntsc/
-
-# ISO archives and disc images
-resident-evil-outbreak-file-2/
-resident-evil-outbreak-file-2.zip
-*.cue
-*.CUE
-*.torrent
-
-# BIOS files
-SCPH-*
-
-# Save data
-saves/
-
-# Build artifacts and temp files
-tools/ps2_debug/overlay_dumps/output/
-tools/ps2_debug/__pycache__/
-recomp/config/output_render_unstub/
-build_*.txt
-gs_frames/
-*.gs
-
-# Claude local settings
 .claude/
-
-# Recompiled title overlay (regenerate with:
-#   ps2_recomp.exe tools/ps2_debug/overlay_dumps/overlay_config.toml
-# then follow the steps in current-frontier.md)
-
-# PS2Recomp overlay output: made locally, never committed (REPO_RULES section 3)
-recomp/config/output_overlay/

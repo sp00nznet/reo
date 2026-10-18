@@ -1,0 +1,17 @@
+# PS2Recomp configuration for: netdnas.bin (overlay, loads at 0x6E0000)
+# Extracted from game_data/BIN/4.DAT by tools/ps2_debug/mwo3.py --elf
+
+[general]
+input = "G:/recomp/ps2/reo/tools/ps2_debug/overlay_dumps/netdnas.elf"
+ghidra_output = ""
+output = "G:/recomp/ps2/reo/tools/ps2_debug/overlay_dumps/netdnas/"
+single_file_output = false
+patch_syscalls = false
+patch_cop0 = true
+patch_cache = true
+
+stubs = [
+]
+
+skip = [
+]

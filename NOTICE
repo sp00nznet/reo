@@ -1,0 +1,33 @@
+reo -- a static recompilation of Resident Evil Outbreak
+Copyright (C) 2025-2026 sp00nz
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3 (see LICENSE).
+
+Why GPL-3.0: reo links PS2Recomp's runtime (ps2_runtime, ps2_iop), which is
+GPL-3.0, and reo's overrides are written against its API. The combined program
+can only be distributed under the GPL. Decided 2026-10-17.
+
+Third-party code carried in this repository or linked into reo_recomp.exe:
+
+| Path / component                | Upstream                                   | Version            | Licence              | Text                                  |
+|---------------------------------|--------------------------------------------|--------------------|----------------------|---------------------------------------|
+| third_party/PS2Recomp (submodule) | https://github.com/ran-j/PS2Recomp (via sp00nznet/PS2Recomp, branch reo-on-upstream) | see submodule commit | GPL-3.0          | LICENSE (same text)                   |
+| runtime/gs/stb_image_write.h    | https://github.com/nothings/stb            | v1.16              | MIT or Public Domain | LICENSES/stb-MIT-or-PublicDomain.txt  |
+| raylib (fetched by PS2Recomp, linked) | https://github.com/raysan5/raylib     | 5.5                | Zlib                 | LICENSES/raylib-Zlib.txt              |
+| GLFW (bundled in raylib, linked) | https://github.com/glfw/glfw              | raylib 5.5's copy  | Zlib                 | LICENSES/glfw-Zlib.txt                |
+| fmt (fetched, linked)           | https://github.com/fmtlib/fmt              | 12.1.0             | MIT                  | LICENSES/fmt-MIT.txt                  |
+| libdwarf (fetched, linked)      | https://github.com/davea42/libdwarf-code   | v2.2.0             | LGPL-2.1             | LICENSES/libdwarf-COPYING.txt, LICENSES/libdwarf-LGPL-2.1.txt |
+
+PS2Recomp also fetches ELFIO (MIT), toml11 (MIT), rabbitizer (MIT),
+nlohmann/json (MIT), sse2neon (MIT), Dear ImGui and rlImGui (MIT) for its
+recompiler and studio. They are build tools here and are not linked into
+reo_recomp.exe.
+
+Reference-only tools: PCSX2 (GPL-3.0+) has been run as a black box to capture
+GS dumps and memory for comparison. tools/gs_dump_replay reads PCSX2's .gs dump
+format; that is format compatibility, and GPL-3.0 here covers it either way.
+
+Not distributed, ever: game code or data, recompiled/generated source, BIOS
+images, or anything captured from a running game (REPO_RULES section 3).
