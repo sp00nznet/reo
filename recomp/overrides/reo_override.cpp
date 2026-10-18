@@ -5,7 +5,7 @@
  *   - File #1: SLUS-20765 (SLUS_207.65)
  *   - File #2: SLUS-20984 (SLUS_209.84)
  *
- * Both games share the same engine (derived from REOF2), so the
+ * Both games share the same engine, so the
  * override structure is largely identical — same GS/SPU2/IOP
  * interfaces, same SN@P network stack, same DNAS flow.
  *
@@ -94,99 +94,6 @@ static void reo_dma_chan_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* run
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── Rendering subsystem initialization ──────────────────────────────
-// The original game initializes the rendering subsystem through several
-// PS2 SDK functions that the recompiler couldn't decompile (0x13AE10,
-// 0x136A80, 0x13CB30, etc.). These set up:
-//   - DMA channel pointers in the rendering state block
-//   - Double-buffered display list buffers (512KB each)
-//   - Rendering state flags
-// We manually initialize all of these.
-//
-// Rendering state block (in BSS at ~0x29F5D0-0x29FE00):
-//   0x29F5F0  - display list channel index (used by sub_0018D470)
-//   0x29F6F0  - display list entry struct base
-//   0x29F704  - display list head pointers [2] (double-buffered)
-//   0x29FDB0  - rendering state flag (0=init, 1=active, 2=flush)
-//   0x29FDB4  - double buffer index (0 or 1)
-//   0x29FDB8  - current display list write pointer
-//   0x29FDBC  - current display list end pointer
-//   0x29FDC0  - current display list base pointer
-//   0x29FDC4  - display list buffer base addresses [2]
-//   0x29FD74  - DMA channel pointer table
-static void reo_gfx_obj_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    constexpr uint32_t RAM_MASK = 0x1FFFFFF;
-
-    // ── DMA channel pointers ──
-    constexpr uint32_t GIF_DMA_BASE  = 0x1000A000;
-    constexpr uint32_t VIF1_DMA_BASE = 0x10009000;
-    constexpr uint32_t CHAN_TABLE_ADDR = 0x29FD74;
-
-    auto write32 = [&](uint32_t addr, uint32_t val) {
-        *reinterpret_cast<uint32_t*>(rdram + (addr & RAM_MASK)) = val;
-    };
-    auto read32 = [&](uint32_t addr) -> uint32_t {
-        return *reinterpret_cast<uint32_t*>(rdram + (addr & RAM_MASK));
-    };
-
-    // Write GIF channel pointer to table entry 0
-    write32(CHAN_TABLE_ADDR,     GIF_DMA_BASE);
-    write32(CHAN_TABLE_ADDR + 4, VIF1_DMA_BASE);
-
-    // ── Display list buffers ──
-    // Allocate two 512KB buffers in the bump allocator range (0x600000+)
-    // These buffers hold the per-frame GIF command lists that sub_0018D470 processes
-    constexpr uint32_t DL_BUF_SIZE = 0x80000; // 512KB per buffer
-    constexpr uint32_t DL_BUF0_ADDR = 0x700000; // display list buffer 0
-    constexpr uint32_t DL_BUF1_ADDR = 0x780000; // display list buffer 1
-
-    write32(0x29FDC4,     DL_BUF0_ADDR); // buffer base [0]
-    write32(0x29FDC4 + 4, DL_BUF1_ADDR); // buffer base [1]
-
-    // Initialize the double-buffer index to 0
-    write32(0x29FDB4, 0);
-
-    // Set up initial rendering pointers for buffer 0
-    write32(0x29FDB8, DL_BUF0_ADDR);                // write pointer = start of buffer
-    write32(0x29FDC0, DL_BUF0_ADDR);                // base pointer
-    write32(0x29FDBC, DL_BUF0_ADDR + DL_BUF_SIZE);  // end pointer
-
-    // Initialize the display list entry struct at 0x29F6F0.
-    // The GIF tag processor (sub_0018D470) reads entry[12] as the data buffer
-    // address (passed through pool_resolve). Each entry is indexed by dbIdx*4.
-    //   entry[0] @ 0x29F6F0: dbIdx=0 entry base
-    //   entry[1] @ 0x29F6F4: dbIdx=1 entry base
-    //   entry[0]+12 = 0x29F6FC: data buffer ptr for buf[0]
-    //   entry[1]+12 = 0x29F700: data buffer ptr for buf[1]
-    write32(0x29F6FC, DL_BUF0_ADDR);  // entry[0] data buffer = buf[0]
-    write32(0x29F700, DL_BUF1_ADDR);  // entry[1] data buffer = buf[1]
-
-    // Tag entry counts at 0x29F704/0x29F708 (per-buffer, indexed by dbIdx).
-    // sub_0018CFB0 increments these as it writes tag entries to the buffer.
-    // sub_0018D470 checks if non-zero to decide whether to process tags.
-    // Start at 0 — CFB0 will set them when A0920 commits GS setup data.
-    write32(0x29F704, 0);  // entry_count[0] = 0
-    write32(0x29F708, 0);  // entry_count[1] = 0
-
-    // Tag write indices at 0x29F70C/0x29F710 (per-buffer, indexed by dbIdx).
-    // CFB0 writes tag entries at buf_ptr + write_idx*4 and increments write_idx.
-    // Must be 0 initially so first tag entry goes to buffer offset 0.
-    write32(0x29F70C, 0);  // write_idx[0] = 0
-    write32(0x29F710, 0);  // write_idx[1] = 0
-
-    // Write end-of-list markers at the start of each buffer
-    constexpr uint32_t DL_END_TAG = 0xF0000002;
-    write32(DL_BUF0_ADDR, DL_END_TAG);
-    write32(DL_BUF1_ADDR, DL_END_TAG);
-
-    printf("[REO-GFX] gfx_obj_init:\n");
-    printf("[REO-GFX]   GIF DMA base=0x%08X at table[0]=0x%08X\n", GIF_DMA_BASE, CHAN_TABLE_ADDR);
-    printf("[REO-GFX]   DL buf[0]=0x%08X buf[1]=0x%08X (512KB each)\n", DL_BUF0_ADDR, DL_BUF1_ADDR);
-    printf("[REO-GFX]   DB index=0, write_ptr=0x%08X, end=0x%08X\n", DL_BUF0_ADDR, DL_BUF0_ADDR + DL_BUF_SIZE);
-
-    setReturnU32(ctx, 1);
-    ctx->pc = getRegU32(ctx, 31);
-}
 
 // ── Video mode initialization (sub_0013ADF0) ──────────────────────────
 // Called from sub_00131088 with args (a0=width, a1=height, a2=psm, a3=fbw).
@@ -265,24 +172,6 @@ static void reo_video_mode_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* r
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── Pool address resolver passthrough ───────────────────────────────
-// sub_0018DCA0 and sub_0018DC90 are trampolines into the memory pool
-// system (entry_1a0d70 → entry_1a1330, entry_1a0d80 → entry_1a1370).
-// On the real PS2, the heap allocator returns pool handles that these
-// functions resolve to actual addresses. Our bump allocator (reo_gfx_obj_init)
-// returns raw usable addresses, so pool resolution should be identity (return a0).
-// Without this, the pool struct at 0x2AFDF0 is uninitialized → lookup returns 0
-// → wrPtr (0x29FDB8) gets set to 0 → display list entries are empty → no rendering.
-static void reo_pool_resolve(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t addr = getRegU32(ctx, 4);
-    static int logCount = 0;
-    if (logCount < 10) {
-        printf("[REO-POOL] resolve(0x%08X) → passthrough\n", addr);
-        logCount++;
-    }
-    setReturnU32(ctx, addr);
-    ctx->pc = getRegU32(ctx, 31);
-}
 
 // ── Display buffer init (likely display alloc/setup, 640x448) ──────────
 static void reo_display_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
@@ -952,8 +841,26 @@ static void reo_sio_thread(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtim
 // Address binding helpers
 // ═══════════════════════════════════════════════════════════════════════
 
+// Bring-up switches for sorting the stub-era bindings, which replace the
+// game's real code: REO_ONLY_BINDS=0x117080,0x1179E8 binds only those,
+// REO_SKIP_BINDS=0x13AE10 drops those. Comma-separated hex addresses.
+static bool bindListed(const char* env, uint32_t addr) {
+    const char* s = std::getenv(env);
+    if (!s) return false;
+    for (char* end; *s; s = *end ? end + 1 : end) {
+        if (std::strtoul(s, &end, 16) == addr) return true;
+        if (end == s) break;
+    }
+    return false;
+}
+
 static void bind(PS2Runtime& runtime, uint32_t addr,
                  PS2Runtime::RecompiledFunction fn, const char* name) {
+    if ((std::getenv("REO_ONLY_BINDS") && !bindListed("REO_ONLY_BINDS", addr)) ||
+        bindListed("REO_SKIP_BINDS", addr)) {
+        printf("[REO]   0x%08X    %s SKIPPED\n", addr, name);
+        return;
+    }
     // Register in BOTH the function table (for indirect jumps/dispatch loop)
     // and the stub override registry (for direct calls from generated code).
     runtime.registerFunction(addr, fn);
@@ -1009,6 +916,16 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
         return;
     }
 
+    // Removed 2026-10-17, each a stub-era guess that replaced real game code
+    // (measured with REO_SKIP_BINDS; see docs/boot-gates.md "The override purge"):
+    //   0x13AE10 "gfx_obj_init"   wrote a fake display-list layout; its 0xF0000002
+    //                             seed became a VIF1 kick with tadr=2 and no IRQ,
+    //                             which stalled the frame loop at frame 160
+    //   0x18DCA0/0x18DC90 "pool_resolve"  real buffer lookups
+    //   0x1B7CB0 "net_sif_cmd"    the per-frame overlay-request driver
+    //   0x1B80D0 "net_close"      the overlay-request API
+    //   0x12A1E8 "hw_init"        engine system init (job system, IRQ handlers)
+    //   0x128860 "hw_init"        no effect either way
     // ── SIF RPC: route game's raw libsif to runtime's real HLE ───────
     // Game's sceSifBindRpc (0x117080) / sceSifCallRpc (0x117818) do raw SBUS
     // RPC the runtime doesn't emulate. Skipped in TOML → stubs → these
@@ -1025,21 +942,20 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // not be dispatched.
     bind(runtime, 0x117080, ps2_stubs::sceSifInitRpc, "sceSifInitRpc (HLE)");
 
-    // 0x118A70 = the SDK's SifLoadModule. The game loops on it at 0x1ab604
-    // waiting for a non-negative module id while loading its IOP modules
-    // ("cdrom0:\IOP\MODULES\DRIVE.DAT;1", DNAS280.IMG, ...). As real code it
-    // drives raw libsif RPC to an IOP that does not exist here, so route it to
-    // the runtime's module-load HLE. ABI matches: $a0 = path, returns id / -1.
-    bind(runtime, 0x118A70, ps2_stubs::sceSifLoadModule, "SifLoadModule (HLE)");
+    // 0x118A70/0x118CF8/0x1190B0/0x118E78 are libsif fileio open/close/read/
+    // lseek, confirmed by the fileio RPC function number each sends (0/1/2/4).
+    // 0x118A70 used to be bound as "SifLoadModule", which gave 0x1AB560 a bogus
+    // fd and so a bogus size for DRIVE.DAT. There is no fileio RPC server on
+    // our IOP, so route all four to the runtime's file HLE.
+    bind(runtime, 0x118A70, ps2_stubs::sceOpen,  "fio open (HLE)");
+    bind(runtime, 0x118CF8, ps2_stubs::sceClose, "fio close (HLE)");
+    bind(runtime, 0x1190B0, ps2_stubs::sceRead,  "fio read (HLE)");
+    bind(runtime, 0x118E78, ps2_stubs::sceLseek, "fio lseek (HLE)");
 
-    // 0x1AB560 = DNAS bring-up (Sony's Dynamic Network Authentication System:
-    // online auth + disc copy-protection). It loads cdrom0:\IOP\MODULES    // DNAS280.IMG and DRIVE.DAT, then spins waiting on their IOP RPC services
-    // (sid 0x80000003 rpc=1, sid 0x80000006 rpc=0xff). Neither can ever answer
-    // here: DNAS's servers are long dead and DRIVE.DAT authenticates a physical
-    // disc, while we run from extracted files. It is not a rendering
-    // dependency, and its caller (sub_0019F550 at 0x19f558) ignores the return
-    // value and proceeds straight to the memory-pool bring-up at 0x19F430.
-    bind(runtime, 0x1AB560, reo_ret0, "DNAS auth bring-up (bypassed)");
+    // 0x1AB560 is the IOP bring-up (reboot IOP with DNAS280.IMG, sceSifInitRpc,
+    // sceSifInitIopHeap, load DRIVE.DAT into IOP heap). It used to be bound to
+    // ret0 as "DNAS auth", which skipped sceSifInitIopHeap, so SJX_Init's IOP
+    // heap allocation failed later ("E0100301"). It runs for real now.
 
     // 0x1179E8 = the SDK's sceSifCallRpc (9 args: client, rpcNum, mode,
     // send/sendSize, recv/recvSize, endFunc, endParam). sub_0011B8B0 uses it
@@ -1112,25 +1028,22 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // libc malloc arena at 0x209800. Every later malloc then span forever.
     bind(runtime, 0x136A80, reo_ret1_log,          "gfx_init_0x136A80");
     bind(runtime, 0x13ADF0, reo_video_mode_init,    "video mode init (NTSC 640x448)");
-    bind(runtime, 0x13AE10, reo_gfx_obj_init,      "gfx_obj_init (GIF DMA table init)");
     // 0x12B638 is a real render init, not a stub: it sets up the globals at
     // 0x210450/0x210454/0x21049C that the render path polls (sub_0012BF98's
     // helper at 0x12c018 spins on 0x21049C). Leaving it as ret0 stalls render.
     bind(runtime, 0x13CB30, reo_ret1_log,          "render_init_0x13CB30");
     bind(runtime, 0x15E6A0, reo_ret1_log,          "hw_init_0x15E6A0");
-    bind(runtime, 0x12A1E8, reo_ret1_log,          "hw_init_0x12A1E8");
-    bind(runtime, 0x128860, reo_ret1_log,          "hw_init_0x128860");
 
     // ── Pool address resolvers (critical for display list pointers) ──
     // These translate bump-allocator addresses through the memory pool system.
     // Since our allocator returns raw addresses, we bypass pool lookup entirely.
-    bind(runtime, 0x18DCA0, reo_pool_resolve,      "pool_resolve (sub_0018DCA0, 21 callers)");
-    bind(runtime, 0x18DC90, reo_pool_resolve,      "pool_resolve (sub_0018DC90, 8 callers)");
 
     // ── Thread entry points (merged by recompiler) ──────────────────
     // These are thread entry points that the recompiler merged into
     // larger functions. Register them so StartThread can find them.
-    bind(runtime, 0x11D7F8, reo_ret0,               "SifInit (skip IOP polling)");
+    // 0x11D7F8 scans kernel RAM (0x80000000-0x80080000) for a code signature
+    // to patch; our kernel space is empty, so the scan never ends. Not SIF.
+    bind(runtime, 0x11D7F8, reo_ret0,               "kernel patch scan (no kernel code here)");
     // EXPERIMENT: let the real SIO/pad thread run (was reo_sio_thread).
     bind(runtime, 0x1CB9A0, reo_demo_thread_entry,  "Demo scene thread entry");
 
@@ -1189,8 +1102,6 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x1B6F10, reo_ret0,             "net_sif_send_2");
     bind(runtime, 0x1B6FD0, reo_net_connect,       "net_connect");
     bind(runtime, 0x1B71D0, reo_net_send,          "net_send");
-    bind(runtime, 0x1B7CB0, reo_ret0,             "net_sif_cmd");
-    bind(runtime, 0x1B80D0, reo_net_close,         "net_close");
     bind(runtime, 0x1BB110, reo_ret0,             "net_rpc_0x1BB110");
     bind(runtime, 0x1BB230, reo_ret0,             "net_rpc_0x1BB230");
     bind(runtime, 0x1DD0D8, reo_net_connect,       "net_inet_connect");
