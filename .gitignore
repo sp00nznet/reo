@@ -61,3 +61,6 @@ Thumbs.db
 .DS_Store
 desktop.ini
 .claude/
+
+# Debug output the hardware bridge writes into the working directory
+reo_fb_dump.bmp
