@@ -23,10 +23,18 @@ under Unreleased, newest first, grouped by period.
 - 0x128B18 ("DMA status poll") was the file server; its binding is gone, and so is the puppet
   scaffold (PCSX2 snapshot injection, forced demo thread, frame-check override).
 
+#### Changed
+- Submodule rebased onto ran-j/PS2Recomp `eb8688b`, which runs real IRX modules on an IOP
+  interpreter. The game's own CRI, Capcom sound and USB modules now run there, and the REO CRI
+  DTX profile is dropped. The fork's old `main` is kept as `archive/main-pre-rebase-2026-10-18`.
+  The toolkit changes are up for review as sp00nznet/PS2Recomp#1-#5.
+- `outbreak.toml` skips 0x20AC40 and 0x2386F8: after the rebase the recompiler decoded these data
+  regions as 7.7 MB and 10 MB functions, which ran cl.exe out of heap.
+
 #### Added
 - `PS2X_FRAME_DUMP` (headless frame capture) and `REO_NO_BRIDGE`.
-- Submodule: `iopheap` and `loadfile` IOP services, an REO profile binding CRI DTX to sid
-  0x90000200, `PS2X_TRACE_IRQ_BUDGET`, and `PS2X_DUMP_RAM=<seconds>:<file>`.
+- Submodule: LOADFILE and iopheap over the IOP emulator, thmsgbx message boxes,
+  `PS2X_TRACE_IRQ_BUDGET`, and `PS2X_DUMP_RAM=<seconds>:<file>`.
 - `REO_SKIP_BINDS` / `REO_ONLY_BINDS` to test overrides one at a time.
 - `tools/ps2_debug/oracle_watch.py`: watch guest memory in PCSX2 over PINE and save states, to
   compare the real boot with ours.

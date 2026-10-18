@@ -686,6 +686,10 @@ skip = [
   "sub_00117080",
   "sub_00117818",
   "sub_001F73B0",
+  # Data decoded as code by the rebased recompiler (2026-10-18): 7.7 MB and
+  # 10 MB of C++ that ran cl.exe out of heap. Never in the earlier output.
+  "sub_0020AC40",
+  "sub_002386F8",
   # "sub_001CB8F0",  # UNSTUBBED: demo scene state machine
 ]
 

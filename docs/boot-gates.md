@@ -5,13 +5,16 @@ runtime, what it looked like, and what actually fixed it. Commit hashes are this
 marked "submodule" (`third_party/PS2Recomp`, branch `reo-on-upstream`). For the tools named here
 see [debugging.md](debugging.md).
 
-## Where it stands (measured 2026-10-17)
+## Where it stands (measured 2026-10-18)
 
 - The game runs its own code, and since the override purge (below) far more of it: the engine's
   system init (0x12A1E8), the IOP bring-up (0x1AB560) and the display-list code are no longer
   stubbed.
-- IOP side: SJX_Init gets its IOP heap (new `iopheap` service), DRIVE.DAT's modules "load" (new
-  `loadfile` service), and the CRI DTX transport is created (REO profile in ps2xIOP).
+- IOP side: since the 2026-10-18 rebase onto ran-j/PS2Recomp `eb8688b`, the game's own IRX modules
+  run on upstream's IOP interpreter. LOADFILE loads all 13 of them for real: 11 from DRIVE.DAT
+  out of IOP RAM, plus USBD/USBKB from disc. The CRI ADX driver registers its DTX server on
+  0x90000200 itself, so the hand-written REO profile is gone. The Capcom sound driver registers
+  sids 0 and 1 once the IOP kernel has message boxes.
 - **The game loads its title overlay itself**: `cdvdfsv: read 'BIN/0.DAT' -> 0x370000`, and the
   header at 0x370000 goes `0x574D0002 -> 0x336F574D`, the same compressed-load-then-decompress
   sequence PCSX2 shows at the same point.
@@ -239,9 +242,17 @@ demo-thread and frame-check scaffold.
 
 ## Current wall
 
-Main thread alive for the whole run, frame counter at ~30 fps (3,577 frames at 120 s; PCSX2 shows
-3,280), the font, NETBIO01 data and `MCICON.BIN` load. Then no more disc reads and no overlay
-request. On hardware, PCSX2 loads an overlay into 0x6E0000 at ~9 s and shows the ACCESS AVE-TCP
+**2026-10-18, after the rebase:** the title overlay, NETBIO and font load as before. Then main
+polls the Capcom sound driver in `sub_001AC730`:
+`do { wait vblank; n = call(sid 1, fn 0x8000000c) } while (n > 0)`. On the old HLE IOP, sid 1 had
+no server, the reply stayed 0 and the game moved on. The real driver runs now, and its
+pending-job count never drains. Likely cause: its SPU2 transfers (LIBSD.IRX from DRIVE.DAT drives
+the SPU2 registers directly) never complete on the IOP side. Next: trace the driver's SPU2 DMA
+and interrupt path in ps2xIOP.
+
+Before the rebase (HLE IOP, sound driver absent), it got further: main thread alive for the whole
+run, frame counter at ~30 fps (3,577 frames at 120 s; PCSX2 shows 3,280), and the font, NETBIO01
+data and `MCICON.BIN` loaded. Then no more disc reads and no overlay request. On hardware, PCSX2 loads an overlay into 0x6E0000 at ~9 s and shows the ACCESS AVE-TCP
 splash at ~20 s, then the violence warning at ~34 s. Nothing is drawn yet: the runtime's GS sees
 no register writes (`gsw=0`), and REO's own hardware bridge only clears to magenta.
 `REO_NO_BRIDGE=1` (runtime GS/VU1 only) changes nothing about game progress. Next: find what the
