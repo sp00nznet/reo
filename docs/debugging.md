@@ -55,6 +55,12 @@ file includes, so changing how it works costs a full rebuild.
 | `PS2X_DUMP_SID=0xSID` | hex dump of the first few RPC requests to that service id |
 | `PS2X_DECI2_HOST` | if unset, Deci2Call reports no host (the normal retail answer) |
 
+## See what it draws, headless
+
+`PS2X_FRAME_DUMP=<dir>` writes the presented frame as `<dir>/frame_NNNNN.ppm` every
+`PS2X_FRAME_DUMP_EVERY` vsyncs (default 60) when `REO_HEADLESS=1`. `ffmpeg -i <dir>/frame_%05d.ppm
+out.mp4` makes a video. `PS2X_DUMP_RAM=<s>:<file>` writes guest RAM once.
+
 ## Compare with the real game
 
 Run PCSX2 as a black box on the same ISO and read its memory over PINE (port 28011, enabled in
@@ -83,6 +89,7 @@ needs structures the state machine itself builds.
 |---|---|
 | `REO_NATURAL=1` | disables the old PCSX2 snapshot injection and forced demo thread in `reo_override.cpp` |
 | `REO_NO_OVERRIDES=1` | skips every function binding in `applyOutbreakOverrides` |
+| `REO_NO_BRIDGE=1` | skips REO's hardware bridge, so GIF/VIF/VU1 go only to the runtime's GS and VU1 core |
 | `REO_SKIP_BINDS=0xA,0xB` | skips just those bindings; `REO_ONLY_BINDS=0xA,0xB` keeps only those. How the override purge was measured |
 | `REO_TRACE=1` | binary event trace to `reo_trace.bin` (`REO_TRACE_FILE=path` to move it) |
 | `REO_TRACE_VIFCMD=1` | VIF command opcode histogram from the hardware bridge |

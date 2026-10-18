@@ -182,18 +182,6 @@ static void reo_display_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runt
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── DMA channel poll — always return "complete" (status 3) ────────────
-// sub_00128B18 is a DMA status poll. Callers busy-wait until it returns 3.
-// Without real DMA hardware, we return 3 immediately.
-static void reo_dma_poll_complete(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    static int logCount = 0;
-    if (logCount < 10) {
-        printf("[REO-DMA] poll_complete(chan=%u) → 3\n", getRegU32(ctx, 4));
-        logCount++;
-    }
-    setReturnU32(ctx, 3);
-    ctx->pc = getRegU32(ctx, 31);
-}
 
 // ── Generic "return 1" with logging ────────────────────────────────────
 static void reo_ret1_log(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
@@ -307,70 +295,6 @@ static void reo_gs_reset_graph(uint8_t* rdram, R5900Context* ctx, PS2Runtime* ru
     uint32_t mode = getRegU32(ctx, 4);
     fprintf(stderr, "[GS-RESET] call #%d mode=%d\n", callCount, mode);
 
-    // Inject PCSX2 snapshots on 3rd call (after basic GS init)
-    static bool snapshotDone = false;
-    if (false && !snapshotDone && callCount == 1) { // DISABLED
-        snapshotDone = true;
-        auto wr32 = [&](uint32_t a, uint32_t v) {
-            uint32_t p = a & PS2_RAM_MASK;
-            if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
-        };
-        auto loadBin = [&](const char* path, const char* fb, uint32_t addr, uint32_t maxSz) -> long {
-            FILE* f = fopen(path, "rb");
-            if (!f && fb) f = fopen(fb, "rb");
-            if (!f) return 0;
-            fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
-            uint32_t p = addr & PS2_RAM_MASK;
-            uint32_t rd = (uint32_t)std::min((long)maxSz, sz);
-            if (p + rd <= PS2_RAM_SIZE) fread(rdram + p, 1, rd, f);
-            fclose(f); return sz;
-        };
-        long msz = loadBin("tools/ps2_debug/pcsx2_mainmenu_8mb.bin",
-                           "tools/ps2_debug/pcsx2_snapshot_4mb.bin", 0xAEA3C0, 8*1024*1024);
-        if (msz > 0) printf("[REO] Injected game data: %ld bytes\n", msz);
-        loadBin("tools/ps2_debug/pcsx2_mainmenu_324000.bin", "tools/ps2_debug/pcsx2_snapshot_324000.bin", 0x324000, 0x500);
-        loadBin("tools/ps2_debug/pcsx2_mainmenu_340000.bin", "tools/ps2_debug/pcsx2_snapshot_340000.bin", 0x340000, 0x3000);
-        loadBin("tools/ps2_debug/pcsx2_mainmenu_236700.bin", "tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100);
-        loadBin("tools/ps2_debug/pcsx2_dma_channels.bin", nullptr, 0x298680, 0x4000);
-        loadBin("tools/ps2_debug/pcsx2_render_pool.bin", nullptr, 0x298000, 0x1000);
-        for (int ch = 0; ch < 8; ch++) {
-            uint32_t ca = (0x298680 + ch*56) & PS2_RAM_MASK;
-            rdram[ca]='T'; rdram[ca+1]='I'; rdram[ca+2]='M'; rdram[ca+3]='2';
-            rdram[ca+4]=4; rdram[ca+5]=1;
-        }
-        wr32(0x29F6E0, 5); wr32(0x29F6F0, 1); wr32(0x29F6F4, 0x1000); wr32(0x29F6F8, 4);
-        for (int i = 0; i < 5; i++) wr32(0x29FA00 + i*4, 1);
-        wr32(0x29FDB8, 0x010B23C0); wr32(0x29FDBC, 0x011323C0);
-        wr32(0x29FDA8, 0x010AA3C0); wr32(0x29FDAC, 0xE00000);
-        uint32_t base = 0xAEA3C0;
-        wr32(0x224C64, base+0x80940); wr32(0x224C64+64, base+0xA0E40);
-        wr32(0x224C64+128, base+0x121840); wr32(0x224C64+192, base+0x161D40);
-        wr32(0x264A00, 0x30000030); wr32(0x264A04, 0xE00000);
-        wr32(0x264A10, 0x30); wr32(0x264A14, 0xEBA000);
-        wr32(0x264A20, 0x30000030); wr32(0x264A24, 0xF2E000);
-        wr32(0x264A30, 0x30); wr32(0x264A34, 0xF7B000);
-        // Load NBD files from romdata
-        NetbioReader nr;
-        if (nr.open("game_data/NETBIO00.DAT")) {
-            std::vector<NetbioEntry> romdata;
-            int rc = nr.parse_inner_afs(0, romdata);
-            uint32_t la = 0xE00000;
-            for (int i = 0; i < std::min(rc, 5); i++) {
-                if (romdata[i].size > 0x200000) continue;
-                uint32_t ph = la & PS2_RAM_MASK;
-                if (ph + romdata[i].size <= PS2_RAM_SIZE) {
-                    FILE* df = fopen("game_data/NETBIO00.DAT", "rb");
-                    if (df) { fseek(df, romdata[i].offset, SEEK_SET);
-                        fread(rdram+ph, 1, romdata[i].size, df); fclose(df);
-                        printf("[REO] NBD [%d] '%s' %u bytes -> 0x%X\n", i, romdata[i].name, romdata[i].size, la);
-                    }
-                }
-                la += (romdata[i].size + 0xFFF) & ~0xFFF;
-            }
-            nr.close();
-        }
-        printf("[REO] Snapshot injection complete\n"); fflush(stdout);
-    }
 
     setReturnU32(ctx, 0);
     ctx->pc = getRegU32(ctx, 31);
@@ -621,208 +545,7 @@ static void dump_game_state(uint8_t* rdram) {
     fflush(stdout);
 }
 
-// ── Frame timing / VSync ─────────────────────────────────────────────
-// sub_001D6720: VSync frame check. On PS2 this reads a VBlank counter
-// at 0x3445E8 (incremented by hardware interrupt). We simulate it
-// with host frame timing and integrate with raylib's event loop.
-static void reo_frame_check(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    using clock = std::chrono::steady_clock;
-    static auto lastFrame = clock::now();
-    static uint32_t frameCount = 0;
 
-    // Target: 60fps (16.67ms per frame)
-    constexpr auto frameDuration = std::chrono::microseconds(16667);
-    auto now = clock::now();
-    auto elapsed = now - lastFrame;
-
-    if (elapsed < frameDuration) {
-        std::this_thread::sleep_for(frameDuration - elapsed);
-    }
-    lastFrame = clock::now();
-    frameCount++;
-
-    // Poll input devices each frame
-    auto* bridge = ReoHwBridge::instance();
-    if (bridge && bridge->input()) {
-        bridge->input()->update();
-    }
-
-    // VBlank counter: write 3 so XOR(3,3)=0, SLTU(0,1)=1 → "frame ready"
-    WRITE32(0x3445E8u & PS2_RAM_MASK, 3);
-
-    if (frameCount <= 10 || frameCount == 100 || frameCount == 500 || frameCount == 900) {
-        printf("[FRAME] %u\n", frameCount);
-        fflush(stdout);
-    }
-
-    // Ensure main loop counter at 0x316598 is non-zero (0 = skip game logic)
-    {
-        uint32_t loopAddr = 0x316598u & PS2_RAM_MASK;
-        uint32_t lc; memcpy(&lc, rdram + loopAddr, 4);
-        if (lc == 0) { lc = 1; memcpy(rdram + loopAddr, &lc, 4); }
-    }
-
-    // REO_NATURAL: when set, disable the PCSX2 snapshot injection + forced
-    // demo so we observe where the game's OWN code stalls (diagnostic mode).
-    static const bool reoNatural = (std::getenv("REO_NATURAL") != nullptr);
-
-    // ── Snapshot injection (frame 5) ────────────────────────────
-    // Load PCSX2 binary snapshots into guest RAM to bootstrap game state.
-    // Without these, the game loops in GsSetCrt initialization forever.
-    static bool snapshotLoaded = false;
-    if (!reoNatural && !snapshotLoaded && frameCount == 5) {
-        snapshotLoaded = true;
-        auto wr32 = [&](uint32_t a, uint32_t v) {
-            uint32_t p = a & PS2_RAM_MASK;
-            if (p + 4 <= PS2_RAM_SIZE) memcpy(rdram + p, &v, 4);
-        };
-        auto loadBin = [&](const char* path, const char* fallback, uint32_t addr, uint32_t maxSz) -> long {
-            FILE* f = fopen(path, "rb");
-            if (!f && fallback) f = fopen(fallback, "rb");
-            if (!f) return 0;
-            fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
-            uint32_t p = addr & PS2_RAM_MASK;
-            uint32_t readSz = (uint32_t)std::min((long)maxSz, sz);
-            if (p + readSz <= PS2_RAM_SIZE) fread(rdram + p, 1, readSz, f);
-            fclose(f);
-            return sz;
-        };
-
-        // Main game data snapshot (8MB or 4MB)
-        long mainSz = loadBin("tools/ps2_debug/pcsx2_mainmenu_8mb.bin",
-                              "tools/ps2_debug/pcsx2_snapshot_4mb.bin",
-                              0xAEA3C0, 8*1024*1024);
-        if (mainSz > 0) printf("[REO] Injected game data: %ld bytes at 0xAEA3C0\n", mainSz);
-
-        // State region snapshots
-        loadBin("tools/ps2_debug/pcsx2_mainmenu_324000.bin", "tools/ps2_debug/pcsx2_snapshot_324000.bin", 0x324000, 0x500);
-        loadBin("tools/ps2_debug/pcsx2_mainmenu_340000.bin", "tools/ps2_debug/pcsx2_snapshot_340000.bin", 0x340000, 0x3000);
-        loadBin("tools/ps2_debug/pcsx2_mainmenu_236700.bin", "tools/ps2_debug/pcsx2_snapshot_236700.bin", 0x236700, 0x100);
-
-        // DMA channels + render pool
-        loadBin("tools/ps2_debug/pcsx2_dma_channels.bin", nullptr, 0x298680, 0x4000);
-        loadBin("tools/ps2_debug/pcsx2_render_pool.bin", nullptr, 0x298000, 0x1000);
-
-        // TIM2 headers in DMA channel entries
-        for (int ch = 0; ch < 8; ch++) {
-            uint32_t chAddr = (0x298680 + ch * 56) & PS2_RAM_MASK;
-            if (chAddr + 56 <= PS2_RAM_SIZE) {
-                rdram[chAddr] = 'T'; rdram[chAddr+1] = 'I';
-                rdram[chAddr+2] = 'M'; rdram[chAddr+3] = '2';
-                rdram[chAddr+4] = 0x04; rdram[chAddr+5] = 0x01;
-            }
-        }
-
-        // Display configuration
-        wr32(0x29F6E0, 5); wr32(0x29F6F0, 1); wr32(0x29F6F4, 0x1000);
-        wr32(0x29F6F8, 4);
-        wr32(0x29FA00, 1); wr32(0x29FA04, 1); wr32(0x29FA08, 1);
-        wr32(0x29FA0C, 1); wr32(0x29FA10, 1);
-
-        // Display list buffers
-        wr32(0x29FDB8, 0x010B23C0); wr32(0x29FDBC, 0x011323C0);
-        wr32(0x29FDA8, 0x010AA3C0); wr32(0x29FDAC, 0x00E00000);
-
-        // Render object table pointers
-        uint32_t base = 0xAEA3C0;
-        wr32(0x224C64,       base + 0x80940);
-        wr32(0x224C64 + 64,  base + 0xA0E40);
-        wr32(0x224C64 + 128, base + 0x121840);
-        wr32(0x224C64 + 192, base + 0x161D40);
-
-        // Scene data table
-        wr32(0x264A00, 0x30000030); wr32(0x264A04, 0xE00000);
-        wr32(0x264A10, 0x30); wr32(0x264A14, 0xEBA000);
-        wr32(0x264A20, 0x30000030); wr32(0x264A24, 0xF2E000);
-        wr32(0x264A30, 0x30); wr32(0x264A34, 0xF7B000);
-
-        // Load NBD files from romdata
-        {
-            NetbioReader nr;
-            if (nr.open("game_data/NETBIO00.DAT")) {
-                std::vector<NetbioEntry> romdata;
-                int rc = nr.parse_inner_afs(0, romdata);
-                uint32_t loadAddr = 0xE00000;
-                for (int i = 0; i < std::min(rc, 5); i++) {
-                    if (romdata[i].size > 0x200000) continue;
-                    uint32_t phys = loadAddr & PS2_RAM_MASK;
-                    if (phys + romdata[i].size <= PS2_RAM_SIZE) {
-                        FILE* datf = fopen("game_data/NETBIO00.DAT", "rb");
-                        if (datf) {
-                            fseek(datf, romdata[i].offset, SEEK_SET);
-                            fread(rdram + phys, 1, romdata[i].size, datf);
-                            fclose(datf);
-                            printf("[REO] Loaded NBD [%d] '%s' (%u bytes) -> 0x%08X\n",
-                                   i, romdata[i].name, romdata[i].size, loadAddr);
-                        }
-                    }
-                    loadAddr += (romdata[i].size + 0xFFF) & ~0xFFF;
-                }
-                nr.close();
-            }
-        }
-
-        printf("[REO] Snapshot injection complete (frame %u)\n", frameCount);
-        fflush(stdout);
-    }
-
-    // Force demo transition after 900 frames (~15s idle)
-    // The game's title screen timer never advances because the coroutine
-    // dispatch in sub_001CC260 doesn't reach the continuation code.
-    static bool demoTriggered = false;
-    if (!reoNatural && !demoTriggered && frameCount >= 900) {
-        demoTriggered = true;
-        printf("[REO] Triggering demo mode at frame %u...\n", frameCount);
-        fflush(stdout);
-        // Call sub_001CBD00 (demo transition) directly
-        R5900Context demoCtx = *ctx;
-        R5900Context* dc = &demoCtx;
-        dc->pc = 0x1CBD00;
-        SET_GPR_U32(dc, 31, 0x1D6720);
-        // Set up ThreadParam on stack: a0 = sp+96
-        uint32_t dsp = GPR_U32(dc, 29);
-        SET_GPR_U32(dc, 4, dsp + 96); // a0 = &ThreadParam
-        uint32_t tp = (dsp + 96) & PS2_RAM_MASK;
-        uint32_t vals[] = {0, 0x1CB9A0, 0x33DA10, 8192, 0x261CF0, 4};
-        for (int i = 0; i < 6; i++) memcpy(rdram + tp + i*4, &vals[i], 4);
-        // CreateThread
-        sub_00114420_0x114420(rdram, dc, runtime);
-        uint32_t tid = GPR_U32(dc, 2);
-        memcpy(rdram + (0x235FF8u & PS2_RAM_MASK), &tid, 4);
-        printf("[REO] Demo thread created: id=%d\n", (int32_t)tid);
-        // StartThread
-        SET_GPR_U32(dc, 4, tid);
-        SET_GPR_U64(dc, 5, 0);
-        sub_00114440_0x114440(rdram, dc, runtime);
-        printf("[REO] Demo StartThread returned: %d\n", (int32_t)GPR_U32(dc, 2));
-        fflush(stdout);
-    }
-
-    // Return 1 (frame ready)
-    setReturnU32(ctx, 1);
-    ctx->pc = getRegU32(ctx, 31);
-}
-
-static void reo_demo_thread_entry(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    printf("[DEMO THREAD] Started! Calling sub_001CB8F0 in loop...\n");
-    fflush(stdout);
-    // The demo state machine is a coroutine — call repeatedly.
-    // First call initializes, subsequent calls advance the state.
-    for (int iter = 0; iter < 100; iter++) {
-        ctx->pc = 0x1CB8F0u; // Always enter at function start
-        sub_001CB8F0_0x1cb8f0(rdram, ctx, runtime);
-        uint32_t v0 = GPR_U32(ctx, 2);
-        if (iter < 5 || iter % 20 == 0) {
-            printf("[DEMO THREAD] iter=%d v0=%d pc=0x%08X\n", iter, v0, ctx->pc);
-            fflush(stdout);
-        }
-        // If the function signals completion (v0 != 0), stop
-        if (v0 != 0 && iter > 0) break;
-    }
-    printf("[DEMO THREAD] Loop done.\n");
-    fflush(stdout);
-    ctx->pc = 0; // Signal thread exit
-}
 
 // ── Thread entry stubs ───────────────────────────────────────────────
 // Thread entry points that the recompiler merged into other functions.
@@ -903,7 +626,11 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     printf("[REO] Applying RE Outbreak File #1 overrides (SLUS-20765, NTSC-U v2.00)\n");
 
     // ── Initialize hardware bridge (GS renderer, VU interpreters) ────
-    if (!g_hwBridge.init(runtime)) {
+    // REO_NO_BRIDGE=1 leaves GIF/VIF/VU1 to the runtime's own GS and VU1 core,
+    // which postdate the bridge (bring-up experiment).
+    if (std::getenv("REO_NO_BRIDGE")) {
+        printf("[REO] REO_NO_BRIDGE set: runtime GS/VU1 only\n");
+    } else if (!g_hwBridge.init(runtime)) {
         printf("[REO] WARNING: Hardware bridge failed to initialize!\n");
         printf("[REO] Rendering will not work. Continuing with stubs only.\n");
     }
@@ -926,6 +653,8 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     //   0x1B80D0 "net_close"      the overlay-request API
     //   0x12A1E8 "hw_init"        engine system init (job system, IRQ handlers)
     //   0x128860 "hw_init"        no effect either way
+    //   0x128B18 "DMA status poll" the file server; faking it hid NETBIO01/02
+    //   0x1CB9A0 "demo thread"     puppet scaffold that faked the attract demo
     // ── SIF RPC: route game's raw libsif to runtime's real HLE ───────
     // Game's sceSifBindRpc (0x117080) / sceSifCallRpc (0x117818) do raw SBUS
     // RPC the runtime doesn't emulate. Skipped in TOML → stubs → these
@@ -1017,7 +746,6 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // These are PS2 SDK functions the recompiler couldn't decompile.
     // Without them, DMA channels never initialize and rendering never starts.
     bind(runtime, 0x138208, reo_dma_chan_init,     "sceDmaGetChan/Reset (DMA channel init)");
-    bind(runtime, 0x128B18, reo_dma_poll_complete, "DMA channel status poll (return complete)");
     // 0x19F380 is NOT just a display-buffer setter. It spans 0x19f380-0x19f430
     // and its tail CALLS 0x19F430, which is the memory-pool bring-up: it
     // mallocs ~23MB (via 0x106EE0) and hands it to pool_init (0x189970),
@@ -1045,7 +773,6 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // to patch; our kernel space is empty, so the scan never ends. Not SIF.
     bind(runtime, 0x11D7F8, reo_ret0,               "kernel patch scan (no kernel code here)");
     // EXPERIMENT: let the real SIO/pad thread run (was reo_sio_thread).
-    bind(runtime, 0x1CB9A0, reo_demo_thread_entry,  "Demo scene thread entry");
 
     // ── Frame timing / VSync ──────────────────────────────────────────
     // sub_001D6720 is the VSync frame check in the main loop.

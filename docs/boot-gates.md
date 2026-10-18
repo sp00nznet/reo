@@ -216,10 +216,33 @@ Gate 2's byte `[0x3243D5]` (which routes the per-frame tick into submain) is wri
 submain itself (byte-coverage scan of the ELF and all nine overlays), so the title overlay cannot
 bootstrap itself; something has to request it first.
 
+## The heap ceiling and the stack collision (2026-10-18)
+
+Two memory-layout bugs in the runtime, both found by diffing our RAM against PCSX2's:
+
+- **The heap stopped at 0x1F00000.** The runtime kept its own RPC/TLS pools at
+  0x1F00000-0x1F31000 and clamped every heap there. REO's 1.1 MB font buffer (`[0x324460]`,
+  `malloc(0x11003F)` at 0x1BB0B4) lands at 0x1EAA400 on hardware and came back NULL here, which
+  surfaced as `E9040818:'buf' is NULL.(ADXF_ReadNw32)` and a loader spinning forever at 0x1A9FD8.
+  The game's own error printer (0x1280D0) is silent; `PS2X_TRACE_CALL=0x1280d0` shows each message
+  address, and the strings are in the ELF.
+- **Interrupt stacks were carved through the main stack.** Handler/callback stacks came from
+  0x2000000 downward in 16 KB steps; four fit above main's stack (0x1FE0000-0x1FF0000), the fifth
+  landed on it. The EE timer handler (INTC cause 11, 0x11E500) then stored over main's saved `$ra`
+  at `[0x1FEFF80]` and main "returned" to 0 at frame 338. `PS2X_WATCH_WRITE=0x1FEFF80` named the
+  store (`pc=0x11e528 ra=0x0 sp=0x1feff60`); `PS2X_TRACE_ASYNC_STACK=1` showed the fifth stack.
+
+Fixed in the submodule (b9a5027): pools moved to 0xC0000, heap ceiling raised to the main stack's
+bottom, async stacks moved to 0x80000-0xBFFFF. Also removed from `reo_override.cpp`: 0x128B18
+("DMA status poll", really the file server; faking it hid NETBIO01/02) and the puppet
+demo-thread and frame-check scaffold.
+
 ## Current wall
 
-After the title overlay loads, main loops through CRI's server tick. The file request at
-0x20C8C0 (the 2048-byte `NETBIO00.DAT` header read to 0x20D2C0) completes (status 3, handle
-0x21AE80 in ADXF state 3) but nothing consumes it, while every request slot in the real game is
-idle at the same point. CRI's job worker (thread 3, entry 0x12ABA0) keeps being resumed and
-suspending again. Next step: find the consumer of that request.
+Main thread alive for the whole run, frame counter at ~30 fps (3,577 frames at 120 s; PCSX2 shows
+3,280), the font, NETBIO01 data and `MCICON.BIN` load. Then no more disc reads and no overlay
+request. On hardware, PCSX2 loads an overlay into 0x6E0000 at ~9 s and shows the ACCESS AVE-TCP
+splash at ~20 s, then the violence warning at ~34 s. Nothing is drawn yet: the runtime's GS sees
+no register writes (`gsw=0`), and REO's own hardware bridge only clears to magenta.
+`REO_NO_BRIDGE=1` (runtime GS/VU1 only) changes nothing about game progress. Next: find what the
+game waits on after `MCICON.BIN`, and why GIF packets don't reach the GS.

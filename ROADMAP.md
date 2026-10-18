@@ -5,20 +5,17 @@
 In order; each needs the one before it. Background for every item is in
 [docs/boot-gates.md](docs/boot-gates.md).
 
-1. **Clear the display-list stall.** The frame loop stops after 160 frames at 0x18D678 because
-   the DMAC cause-1 handler stops releasing the buffer. Find why the interrupt stops arriving (or
-   stops reaching 0x18d224), starting with channels the hardware bridge services without
-   `signalDmacCompletion`.
-2. **Get an overlay requested.** The request slot `[0x2347F0]` is never written. The base ELF's
-   only live-looking requester of the title overlay is 0x1BC8E4, reached only indirectly; find
-   what should reach it. The other route sits behind the retail constant-zero `0x1AF5C0`.
-3. **Gate 1:** the boot loop waits for the network state `[0x3445E8]==3`, driven only from
-   netdnas.bin. Load overlays when the game asks (hook the manager at 0x1A95A0) instead of
-   copying netdnas in eagerly, which the guest wipes.
-4. **Gate 2:** title coroutine tick waits on `[0x340A40]`, set from submain.bin.
-5. Title screen drawn by the game, then "Press Start" with pad input.
-6. Attract demo (demo.bin, 0x570000).
-7. New game: menu flow, then game.bin and a first room.
+Done 2026-10-17: the display-list stall (a wrong override), the overlay request (the game now
+loads `BIN/0.DAT` itself), and "Gate 1", which the PCSX2 oracle showed is never set on hardware.
+
+1. **Boot splash screens.** After `MCICON.BIN` the game reads nothing more; on hardware it loads
+   an overlay into 0x6E0000 at ~9 s and shows the AVE-TCP splash at ~20 s. Find the wait.
+   Separately, GIF packets never reach the runtime's GS (`gsw=0`).
+2. **Audit the remaining overrides** the same way (`REO_SKIP_BINDS`): the GS-library stubs are
+   neutral today but sit on the rendering path; the network stubs are load-bearing.
+3. Title screen drawn by the game, then "Press Start" with pad input.
+4. Attract demo (demo.bin, 0x570000).
+5. New game: menu flow, then game.bin and a first room.
 
 ## Also next
 
@@ -30,7 +27,6 @@ In order; each needs the one before it. Background for every item is in
   requested, title reached ...) checked by a headless run, pass/fail count in the README, fails
   on regression. Needs the game data, so it reports SKIP without it.
 - Sound: an SDRDRV RPC server (`sid=0x1`) in ps2xIOP.
-- Audit the remaining `reo_ret0` "periph" stubs against the disassembly.
 - Toolkit changes go to PS2Recomp as PRs, one per change.
 
 ## Later
@@ -43,5 +39,5 @@ In order; each needs the one before it. Background for every item is in
 - **Online play.** The network code (`network/`, DNAS) is not worked on until offline play runs.
 - **The `src/` HAL** (`reo` executable: Vulkan/WASAPI/XInput plan). It never ran game code and is
   not on the path to a running game. To be deleted or merged deliberately, not extended.
-- The PCSX2-capture "puppet" code in `reo_override.cpp`: to be removed once the game draws its
-  own title screen.
+- The PCSX2-capture "puppet" code in `reo_override.cpp` is gone (snapshot injection, the forced
+  demo thread, the fake display-list init).

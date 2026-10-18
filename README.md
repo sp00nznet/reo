@@ -17,7 +17,8 @@ yet.** No release has been tagged.
 The game runs its own recompiled code with no injected state. As of 2026-10-17 it initializes the
 IOP side (IOP heap, module loads, CRI's DTX transport), reads `0FLIST.DIR` and the NETBIO archive
 headers, and loads and decompresses the title overlay (`BIN/0.DAT` to 0x370000) itself, matching
-what PCSX2 shows at the same point. It then stalls in CRI's file server before the title runs.
+what PCSX2 shows at the same point. It then keeps its frame loop at full speed but stops loading before the boot splash screens, and
+nothing is drawn yet.
 Every wall so far, and how each was found, is in [docs/boot-gates.md](docs/boot-gates.md).
 
 | Stage | State |
@@ -28,7 +29,9 @@ Every wall so far, and how each was found, is in [docs/boot-gates.md](docs/boot-
 | SIF RPC, IOP heap, LOADFILE, CRI DTX | works |
 | CDVD file lookup and reads (`0FLIST.DIR`, NETBIO archives, `BIN/0.DAT`) | works |
 | Title overlay loaded by the game | **works** |
-| CRI file server (ADXF) | stalls: a finished read is never consumed |
+| CRI file server (ADXF), font and archive loads | works |
+| Main thread alive, frame loop at ~30 fps | works |
+| Boot splash screens (AVE-TCP, warning) | not reached: no further reads after `MCICON.BIN` |
 | Title screen drawn by the game | not reached |
 | Attract demo | not reached |
 | New game | not reached |

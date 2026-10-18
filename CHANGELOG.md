@@ -17,7 +17,14 @@ under Unreleased, newest first, grouped by period.
   runtime's file HLE; 0x118A70 had been bound as SifLoadModule.
 - The IOP bring-up (0x1AB560) runs for real, so `sceSifInitIopHeap` runs.
 
+- The heap could not pass 0x1F00000 and the fifth interrupt stack landed on the main stack;
+  both fixed in the submodule by moving the runtime's private memory to kernel-reserved RAM.
+  The main thread now survives and the frame loop runs at full speed.
+- 0x128B18 ("DMA status poll") was the file server; its binding is gone, and so is the puppet
+  scaffold (PCSX2 snapshot injection, forced demo thread, frame-check override).
+
 #### Added
+- `PS2X_FRAME_DUMP` (headless frame capture) and `REO_NO_BRIDGE`.
 - Submodule: `iopheap` and `loadfile` IOP services, an REO profile binding CRI DTX to sid
   0x90000200, `PS2X_TRACE_IRQ_BUDGET`, and `PS2X_DUMP_RAM=<seconds>:<file>`.
 - `REO_SKIP_BINDS` / `REO_ONLY_BINDS` to test overrides one at a time.
