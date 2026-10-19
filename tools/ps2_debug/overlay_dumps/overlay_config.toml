@@ -3,13 +3,13 @@
 
 [general]
 # Path to input ELF file
-input = "D:/reo/tools/ps2_debug/overlay_dumps/overlay_title.elf"
+input = "G:/recomp/ps2/reo/tools/ps2_debug/overlay_dumps/overlay_title.elf"
 
 # Path to Ghidra exported function map (optional CSV)
 ghidra_output = ""
 
 # Path to output directory
-output = "D:/reo/tools/ps2_debug/overlay_dumps/output/"
+output = "G:/recomp/ps2/reo/tools/ps2_debug/overlay_dumps/output/"
 
 # Single file output mode (recommended for large games)
 single_file_output = false

@@ -241,7 +241,7 @@ void Tim2Loader::rearrange_clut(uint8_t* clut, int color_count) {
 }
 
 // RE Outbreak custom 16-bit word LZ77 decompression
-// Based on OBSld::decompress() from libthanatos/REOF2
+// Derived from OBSld::decompress() in libthanatos src/OBSld.cpp (GPL-3.0, see NOTICE)
 std::vector<uint8_t> Tim2Loader::decompress_ob_lz77(const uint8_t* input, uint32_t input_size) {
     if (input_size < 2) return {};
 
