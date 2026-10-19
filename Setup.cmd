@@ -79,15 +79,18 @@ echo [ok] PS2Recomp built.
 rem ---- 5. Recompile the game (made here, never distributed) ---------------------
 if not exist recomp\config\output\register_functions.cpp (
   echo [..] Recompiling SLUS_207.65 ^(a few minutes^)
-  "%TK%\ps2xRecomp\Release\ps2_recomp.exe" recomp/config/outbreak.toml >> "%LOG%" 2>&1 || call :fail "Recompiling the game ELF failed."
+  rem outbreak.toml plus the base functions the overlays call, read from your BIN\*.DAT
+  py -3 -I tools\gen_base_config.py >> "%LOG%" 2>&1 || call :fail "Generating the recompile config failed."
+  "%TK%\ps2xRecomp\Release\ps2_recomp.exe" recomp/build/outbreak.generated.toml >> "%LOG%" 2>&1 || call :fail "Recompiling the game ELF failed."
 )
-if not exist recomp\config\output_overlay\overlay_register.cpp (
-  echo [..] Recompiling the title overlay ^(BIN\0.DAT^)
-  py -3 -I tools\gen_overlay.py game_data/BIN/0.DAT overlay registerOverlayFunctions recomp/config/output_overlay >> "%LOG%" 2>&1 || call :fail "Recompiling the title overlay failed."
-)
-if not exist recomp\config\output_netdnas\netdnas_register.cpp (
-  echo [..] Recompiling the netdnas overlay ^(BIN\4.DAT^)
-  py -3 -I tools\gen_overlay.py game_data/BIN/4.DAT netdnas registerNetdnasFunctions recomp/config/output_netdnas >> "%LOG%" 2>&1 || call :fail "Recompiling the netdnas overlay failed."
+rem Overlays: BIN\<n>.DAT -> recomp\config\output_ovl_<name>. 7.DAT does not exist on the disc.
+for %%O in (0:submain 1:demo 2:game 3:netwk 4:netdnas 5:insdnas 6:nethttp 8:netaq 9:single) do (
+  for /f "tokens=1,2 delims=:" %%A in ("%%O") do (
+    if not exist recomp\config\output_ovl_%%B\%%B_register.cpp (
+      echo [..] Recompiling overlay %%B ^(BIN\%%A.DAT^)
+      py -3 -I tools\gen_overlay.py game_data/BIN/%%A.DAT %%B >> "%LOG%" 2>&1 || call :fail "Recompiling overlay %%B failed."
+    )
+  )
 )
 echo [ok] Generated code in recomp\config\output*\.
 

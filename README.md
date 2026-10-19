@@ -97,11 +97,15 @@ Run everything from the repo root in Git Bash (or adapt the slashes for cmd).
          --target ps2_runtime ps2_iop ps2_recomp
    ```
    Keep `PS2X_ENABLE_FFMPEG=OFF`: ON links shared FFmpeg and the exe then needs its DLLs.
-4. Recompile the game ELF and the two overlays:
+4. Recompile the game ELF and its nine overlays. `gen_base_config.py` writes
+   `recomp/build/outbreak.generated.toml`: `outbreak.toml` plus the base-ELF functions the
+   overlays call, read from your `BIN/*.DAT`.
    ```
-   ./third_party/PS2Recomp/out/build-upstream/ps2xRecomp/Release/ps2_recomp.exe recomp/config/outbreak.toml
-   py -3 tools/gen_overlay.py game_data/BIN/0.DAT overlay registerOverlayFunctions recomp/config/output_overlay
-   py -3 tools/gen_overlay.py game_data/BIN/4.DAT netdnas registerNetdnasFunctions recomp/config/output_netdnas
+   py -3 tools/gen_base_config.py
+   ./third_party/PS2Recomp/out/build-upstream/ps2xRecomp/Release/ps2_recomp.exe recomp/build/outbreak.generated.toml
+   for o in 0:submain 1:demo 2:game 3:netwk 4:netdnas 5:insdnas 6:nethttp 8:netaq 9:single; do
+     py -3 tools/gen_overlay.py game_data/BIN/${o%%:*}.DAT ${o##*:}
+   done
    ```
 5. Configure and build the game:
    ```

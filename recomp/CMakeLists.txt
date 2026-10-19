@@ -60,14 +60,13 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
         return()
     endif()
 
-    # Overlay functions. One dir per overlay: output_overlay is submain.bin
-    # (0x370000), output_netdnas is netdnas.bin (0x6E0000). Both are extracted
-    # from game_data/BIN/*.DAT by tools/ps2_debug/mwo3.py. Globbing the dirs
+    # Overlay functions. One dir per overlay, config/output_ovl_<name>, made by
+    # tools/gen_overlay.py from game_data/BIN/*.DAT and dispatched by reo_overlays.cpp.
+    # Globbing the dirs
     # means a new overlay needs no edit here.
     set(OVERLAY_SOURCES "")
     set(OVERLAY_INCLUDES "")
-    file(GLOB OVERLAY_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/config/output_overlay"
-                           "${CMAKE_CURRENT_SOURCE_DIR}/config/output_netdnas")
+    file(GLOB OVERLAY_DIRS LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/config/output_ovl_*")
     foreach(_ovl_dir ${OVERLAY_DIRS})
         if(IS_DIRECTORY "${_ovl_dir}")
             file(GLOB _ovl_srcs "${_ovl_dir}/*.cpp")
@@ -82,6 +81,7 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
 
     add_executable(${TARGET_NAME}
         reo_bootstrap.cpp
+        reo_overlays.cpp
         overrides/reo_override.cpp
         overrides/reo_hw_bridge.cpp
         overrides/reo_trace_logger.cpp
