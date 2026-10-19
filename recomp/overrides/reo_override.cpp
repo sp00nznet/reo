@@ -77,102 +77,6 @@ static void reo_ret0_log(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime)
     ctx->pc = getRegU32(ctx, 31);
 }
 
-// ── DMA channel init (likely sceDmaGetChan or sceDmaReset) ────────────
-// Returns a "DMA channel handle" — the KSEG1 address of the channel registers.
-// The game passes channel offsets like 0x8000 (VIF0), 0x9000 (VIF1), 0x9100, etc.
-static void reo_dma_chan_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    uint32_t chanId = getRegU32(ctx, 4); // a0 = channel offset/ID
-    // Return the DMA channel register base address (KSEG1 mapped)
-    // 0x10000000 + offset → gives 0x10008000 for VIF0, 0x10009000 for VIF1, etc.
-    uint32_t chanBase = 0x10000000 | chanId;
-    static int logCount = 0;
-    if (logCount < 20) {
-        printf("[REO-DMA] chan_init(0x%X) → base=0x%08X\n", chanId, chanBase);
-        logCount++;
-    }
-    setReturnU32(ctx, chanBase);
-    ctx->pc = getRegU32(ctx, 31);
-}
-
-
-// ── Video mode initialization (sub_0013ADF0) ──────────────────────────
-// Called from sub_00131088 with args (a0=width, a1=height, a2=psm, a3=fbw).
-// When args are all 0, uses NTSC defaults.
-// Populates the rendering state block at 0x29F--- that sub_001A0920 reads
-// to build per-frame GS register setup GIF packets.
-//
-// State block layout (inputs to sub_001A0920):
-//   0x29FED0  - render height (448 for NTSC)
-//   0x29FED8  - render width (640)
-//   0x29FD50  - packed RGBA/display mode (byte-swapped into GS BGCOLOR)
-//   0x29FD54  - FBP (frame buffer base pointer, 2048-byte pages)
-//   0x29FD58  - FBW (frame buffer width, 64-pixel units)
-//   0x29FDF0  - PMODE register value (64-bit)
-//   0x29FE08  - SMODE2 register value (64-bit)
-//   0x29FDD0  - DISPFB1 register value (64-bit)
-//   0x29FDD8  - DISPLAY1 register value (64-bit)
-//   0x29FDE0  - DISPFB2 register value (64-bit)
-//   0x29FDE8  - DISPLAY2 register value (64-bit)
-static void reo_video_mode_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    constexpr uint32_t RAM_MASK = 0x1FFFFFF;
-
-    auto write32 = [&](uint32_t addr, uint32_t val) {
-        *reinterpret_cast<uint32_t*>(rdram + (addr & RAM_MASK)) = val;
-    };
-    auto write64 = [&](uint32_t addr, uint64_t val) {
-        *reinterpret_cast<uint64_t*>(rdram + (addr & RAM_MASK)) = val;
-    };
-
-    // Use args or defaults for NTSC 640x448 interlaced
-    uint32_t width  = getRegU32(ctx, 4);
-    uint32_t height = getRegU32(ctx, 5);
-    uint32_t psm    = getRegU32(ctx, 6);
-    uint32_t fbw    = getRegU32(ctx, 7);
-
-    if (width == 0)  width  = 640;
-    if (height == 0) height = 448;
-    if (fbw == 0)    fbw    = width / 64;  // 10 for 640
-
-    // Scalar rendering parameters
-    write32(0x29FED0, height);           // render height
-    write32(0x29FED8, width);            // render width
-    write32(0x29FD50, 0x00800000);       // packed display mode (non-zero)
-    write32(0x29FD54, 0);                // FBP = page 0
-    write32(0x29FD58, fbw);              // FBW = 10
-
-    // GS privileged register values for NTSC 640x448 interlaced frame mode
-    // PMODE: EN2=1, CRTMD=1, MMOD=1, AMOD=1 → single circuit 2
-    write64(0x29FDF0, 0x0000000000000066ULL);
-
-    // SMODE2: INT=1, FFMD=1 (frame mode interlace)
-    write64(0x29FE08, 0x0000000000000003ULL);
-
-    // DISPFB1: FBP=0, FBW=10, PSM=0 (PSMCT32), DBX=0, DBY=0
-    // DISPFB = FBP | (FBW << 9) | (PSM << 15) | (DBX << 32) | (DBY << 43)
-    uint64_t dispfb = (uint64_t)fbw << 9;  // 10 << 9 = 0x1400
-    write64(0x29FDD0, dispfb);  // DISPFB1
-    write64(0x29FDE0, dispfb);  // DISPFB2
-
-    // DISPLAY1/2: DX=636, DY=50, MAGH=3, MAGV=0, DW=2559, DH=447
-    // DISPLAY = DX | (DY << 12) | (MAGH << 23) | (MAGV << 27) | (DW << 32) | (DH << 44)
-    uint64_t dx = 636, dy = 50, magh = 3, magv = 0;
-    uint64_t dw = (uint64_t)width * (magh + 1) - 1;  // 2559
-    uint64_t dh = (uint64_t)height - 1;               // 447
-    uint64_t display = dx | (dy << 12) | (magh << 23) | (magv << 27)
-                     | (dw << 32) | (dh << 44);
-    write64(0x29FDD8, display);  // DISPLAY1
-    write64(0x29FDE8, display);  // DISPLAY2
-
-    printf("[REO-VIDMODE] video_mode_init: %ux%u PSM=%u FBW=%u\n", width, height, psm, fbw);
-    printf("[REO-VIDMODE]   PMODE=0x%016llX SMODE2=0x%016llX\n",
-           0x0000000000000066ULL, 0x0000000000000003ULL);
-    printf("[REO-VIDMODE]   DISPFB=0x%016llX DISPLAY=0x%016llX\n", dispfb, display);
-
-    setReturnU32(ctx, 1);
-    ctx->pc = getRegU32(ctx, 31);
-}
-
-
 // ── Display buffer init (likely display alloc/setup, 640x448) ──────────
 static void reo_display_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
     uint32_t width = getRegU32(ctx, 4);
@@ -182,18 +86,6 @@ static void reo_display_init(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runt
     ctx->pc = getRegU32(ctx, 31);
 }
 
-
-// ── Generic "return 1" with logging ────────────────────────────────────
-static void reo_ret1_log(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    static int logCount = 0;
-    if (logCount < 30) {
-        printf("[REO-STUB] ret1 at pc=0x%08X a0=0x%X a1=0x%X\n",
-               ctx->pc, getRegU32(ctx, 4), getRegU32(ctx, 5));
-        logCount++;
-    }
-    setReturnU32(ctx, 1);
-    ctx->pc = getRegU32(ctx, 31);
-}
 
 // ── Printf handler ────────────────────────────────────────────────────
 static void reo_printf(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
@@ -336,11 +228,6 @@ static void reo_gs_sync_v(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime
 }
 
 // GS sync primitive — called from render/network loops
-static void reo_gs_sync(uint8_t* rdram, R5900Context* ctx, PS2Runtime* runtime) {
-    setReturnU32(ctx, 0);
-    ctx->pc = getRegU32(ctx, 31);
-}
-
 // ── SIF/IOP init ─────────────────────────────────────────────────────
 
 // sub_0011D9C8 — SIF DMA status check (gates IOP module loading)
@@ -742,10 +629,12 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // sub_00371A00 JALs func_1CC2D0, the only writer of the coroutine head at
     // [0x340A40] -- and sub_001CC550's per-frame tick is gated on that word.
 
-    // ── Critical DMA/display init stubs ─────────────────────────────────
-    // These are PS2 SDK functions the recompiler couldn't decompile.
-    // Without them, DMA channels never initialize and rendering never starts.
-    bind(runtime, 0x138208, reo_dma_chan_init,     "sceDmaGetChan/Reset (DMA channel init)");
+    // ── Display init: these run for real now ────────────────────────────
+    // Removed 2026-10-18 (measured with REO_SKIP_BINDS): 0x138208 "sceDmaGetChan/
+    // Reset", 0x136A80 "gfx_init", 0x13ADF0 "video mode init", 0x13CB30
+    // "render_init", 0x15E6A0 "hw_init" and 0x1C8850 "matrix_stub". With them
+    // bound the game drew only its clear sprites; without them the boot splash
+    // screens (AVE-TCP, SNAP, ESRB, violence warning) render.
     // 0x19F380 is NOT just a display-buffer setter. It spans 0x19f380-0x19f430
     // and its tail CALLS 0x19F430, which is the memory-pool bring-up: it
     // mallocs ~23MB (via 0x106EE0) and hands it to pool_init (0x189970),
@@ -754,13 +643,9 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // returned 0 for the 6MB graphics buffer, and the caller then ran
     // memset(0, 0, 0x5C0000) -- wiping 6MB from guest address 0, including the
     // libc malloc arena at 0x209800. Every later malloc then span forever.
-    bind(runtime, 0x136A80, reo_ret1_log,          "gfx_init_0x136A80");
-    bind(runtime, 0x13ADF0, reo_video_mode_init,    "video mode init (NTSC 640x448)");
     // 0x12B638 is a real render init, not a stub: it sets up the globals at
     // 0x210450/0x210454/0x21049C that the render path polls (sub_0012BF98's
     // helper at 0x12c018 spins on 0x21049C). Leaving it as ret0 stalls render.
-    bind(runtime, 0x13CB30, reo_ret1_log,          "render_init_0x13CB30");
-    bind(runtime, 0x15E6A0, reo_ret1_log,          "hw_init_0x15E6A0");
 
     // ── Pool address resolvers (critical for display list pointers) ──
     // These translate bump-allocator addresses through the memory pool system.
@@ -788,7 +673,11 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     // not depend on.
 
     // ── GS sync / render ─────────────────────────────────────────────
-    bind(runtime, 0x1F73B0, reo_gs_sync,           "sceGsSyncPath (render)");
+    // 0x1F73B0 was bound here as "sceGsSyncPath (render)" returning 0. It is a
+    // state machine over 0x36F080-0x36F0D8 that returns its status byte, and
+    // its caller polls it until done; the constant 0 held the boot after the
+    // memory-card check. It runs for real now; outbreak.toml's [function_ends]
+    // stops it at 0x1F7524, before the VU microcode that follows it.
     // 0x105BD0 is NOT sceGsSyncV -- it is heap sbrk/malloc_extend_top: it takes
     // the malloc lock (0x107D28), computes the arena base 0x210000-0x6800 =
     // 0x209800, reads the arena top chunk at [base+8] and rounds the request up
@@ -829,15 +718,16 @@ static void applyOutbreakOverrides(PS2Runtime& runtime) {
     bind(runtime, 0x1B6F10, reo_ret0,             "net_sif_send_2");
     bind(runtime, 0x1B6FD0, reo_net_connect,       "net_connect");
     bind(runtime, 0x1B71D0, reo_net_send,          "net_send");
-    bind(runtime, 0x1BB110, reo_ret0,             "net_rpc_0x1BB110");
-    bind(runtime, 0x1BB230, reo_ret0,             "net_rpc_0x1BB230");
+    // 0x1BB230 / 0x1BB110 are not network code. 0x1BB230 is the game's subsystem
+    // init (it calls 0x1CC950, which points the scratch buffer [0x340AE0] at
+    // [0x32440C]); stubbed, that buffer stayed NULL, ADXF_ReadNw32 refused it
+    // ("'buf' is NULL") and the loader at 0x1A9FD8 polled forever on NOW LOADING.
+    // 0x1BB110 is a 20-call countdown it arms. Found by tracing the stall.
     bind(runtime, 0x1DD0D8, reo_net_connect,       "net_inet_connect");
 
     // ── Sound / audio stubs ──────────────────────────────────────────
     bind(runtime, 0x1BCF60, reo_ret0,             "audio_init_0x1BCF60");
 
-    // ── Matrix / 3D math stubs ───────────────────────────────────────
-    bind(runtime, 0x1C8850, reo_ret0,             "matrix_stub_0x1C8850");
 
     // ── Additional stubs (identified by address range) ───────────────
     // Mid-range SDK stubs

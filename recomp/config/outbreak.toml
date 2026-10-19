@@ -17,6 +17,16 @@ thread_entries = [
   # same mechanism. 0x10A9D8 is called via JALR from 0x10518C; without a slot
   # the runtime reports [guest-branch:missing-target] and the call dies.
   "0x0010A9D8",
+  # Leaves reached only through function-pointer tables, right after a jr ra.
+  # 0x1BA420/0x1BA430 are tail-call thunks (j 0x1AC730) the loader calls via JALR from
+  # 0x1D39EC once loading starts; 0x11CEB0/0x11D980/0x11DAF0/0x11DDA0 are copy
+  # loops. Found as data-pointed boundaries missing from the function table.
+  "0x001BA420",
+  "0x001BA430",
+  "0x0011CEB0",
+  "0x0011D980",
+  "0x0011DAF0",
+  "0x0011DDA0",
   "0x001395C8",
   "0x0013F998",
   "0x001AC640",
@@ -685,7 +695,6 @@ stubs = [
 skip = [
   "sub_00117080",
   "sub_00117818",
-  "sub_001F73B0",
   # Data decoded as code by the rebased recompiler (2026-10-18): 7.7 MB and
   # 10 MB of C++ that ran cl.exe out of heap. Never in the earlier output.
   "sub_0020AC40",
@@ -1734,3 +1743,9 @@ instructions = [
 [performance]
 critical = [
 ]
+
+# Functions whose discovered end runs on into data. 0x1F73B0 is followed by VU
+# microcode (0x1F7580-0x207958); decoded as one function it needed a stack frame
+# big enough to overflow the game thread.
+[function_ends]
+"0x1F73B0" = "0x1F7524"
