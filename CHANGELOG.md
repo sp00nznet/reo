@@ -9,6 +9,16 @@ under Unreleased, newest first, grouped by period.
 ### 2026-10: boot flow
 
 #### Fixed
+- A scripted boot now reaches gameplay (J's Bar, the first scenario's opening). On the way:
+  - NOW LOADING hung because 0x1BB230 ("net_rpc", really subsystem init) was stubbed and the
+    loader's read buffer stayed NULL; that binding and 0x1BB110 are gone.
+  - Six functions reached only through pointers had no entry (`outbreak.toml`).
+  - Overlay functions folded into 36-41 KB host functions overflowed the host stack; overlays
+    now split at every prologue (submodule: `function_starts`).
+  - VU1 ran garbage once the room drew: the VIF1 interpreter continued a split texture upload
+    in raw qwords instead of the next DIRECT and lost sync (submodule fix).
+- FMV plays: the IPU is Play!'s decoder (submodule; BSD-2-Clause, see NOTICE).
+- The pad and the memory-card path work through the game's own sio2man/dbcman drivers.
 - The game now loads its title overlay itself. Seven stub-era bindings in `reo_override.cpp`
   replaced real game code under wrong names and are removed; the worst wrote a fake display-list
   layout whose seed entry stalled the frame loop at frame 160 (docs/boot-gates.md, "The override
@@ -32,6 +42,10 @@ under Unreleased, newest first, grouped by period.
   regions as 7.7 MB and 10 MB functions, which ran cl.exe out of heap.
 
 #### Added
+- All nine overlays are recompiled and dispatched by residency (`recomp/reo_overlays.cpp`,
+  `tools/gen_overlay.py`, `tools/gen_base_config.py`).
+- `PS2X_PAD_SCRIPT` (guest-timed pad presses), `PS2X_WATCHDOG`, `PS2X_COVERAGE`,
+  `PS2X_TRACE_VIF1`, `PS2X_TRACE_BIG_CHAIN`, multi-point `PS2X_DUMP_RAM`, and a crash reporter.
 - `PS2X_FRAME_DUMP` (headless frame capture) and `REO_NO_BRIDGE`.
 - Submodule: LOADFILE and iopheap over the IOP emulator, thmsgbx message boxes,
   `PS2X_TRACE_IRQ_BUDGET`, and `PS2X_DUMP_RAM=<seconds>:<file>`.

@@ -11,31 +11,32 @@ runtime.
 
 ## Status
 
-**Alpha. It boots and loads its title overlay on its own, but does not draw the title screen
-yet.** No release has been tagged.
+**Alpha. A scripted boot reaches gameplay: the first scenario opens in J's Bar, drawn by the
+game's own code. It runs far below full speed, and nothing past that point has been tried.**
+No release has been tagged.
 
-The game runs its own recompiled code with no injected state. As of 2026-10-18 its own IOP
-modules (CRI ADX/DTX, Capcom's sound driver, USB) run on PS2Recomp's IOP interpreter. It reads
-`0FLIST.DIR` and the NETBIO archives, and loads and decompresses the title overlay (`BIN/0.DAT`
-to 0x370000) itself, matching what PCSX2 shows at the same point. It then waits on the sound
-driver, before the boot splash screens, and nothing is drawn yet.
+The game runs its own recompiled code with no injected state. Its own IOP modules (CRI
+ADX/DTX, Capcom's sound driver, USB, the pad and memory-card drivers) run on PS2Recomp's IOP
+interpreter. With a pad script (`PS2X_PAD_SCRIPT`, guest-timed) a headless run goes through
+the boot splashes, the Capcom logo and title movie, the menus (single play, scenario,
+character, difficulty), the intro movie and NOW LOADING into the scenario.
 Every wall so far, and how each was found, is in [docs/boot-gates.md](docs/boot-gates.md).
 
 | Stage | State |
 |---|---|
 | ELF load, ~3,700 recompiled functions | works |
-| Title (submain.bin) and netdnas.bin overlays recompiled and linked | works |
+| All nine overlays recompiled, dispatched by which one is resident | works |
 | Kernel threads, semaphores, interrupt handlers | works |
 | SIF RPC, IOP heap, LOADFILE | works |
-| Game's IRX modules (CRI ADX/DTX, Capcom sound, USB) on the IOP interpreter | works |
-| CDVD file lookup and reads (`0FLIST.DIR`, NETBIO archives, `BIN/0.DAT`) | works |
-| Title overlay loaded by the game | **works** |
-| CRI file server (ADXF), font and archive loads | works |
-| Sound driver start-up | **current wall**: its pending-job count never reaches 0 |
-| Boot splash screens (AVE-TCP, warning) | not reached |
-| Title screen drawn by the game | not reached |
-| Attract demo | not reached |
-| New game | not reached |
+| Game's IRX modules on the IOP interpreter | works |
+| CDVD file lookup and reads, CRI file server (ADXF) | works |
+| Pad (DualShock 2 behind sio2man) | works |
+| Memory card | no card: the game's "continue without saving" path works; a card image does not mount yet |
+| Boot splashes, title screen, menus | works; the title background is missing |
+| FMV (IPU, Play!'s decoder) | plays; motion-compensated frames show green blocks |
+| Loading into the first scenario | works |
+| In-game 3D (VU1 + GS) | **draws**; runs far below full speed |
+| Playing the scenario | not tried yet |
 | Sound output (SPU2) | not implemented |
 | File #2 (SLUS-20984) | builds; no boot work |
 | Online play | out of scope for now |
