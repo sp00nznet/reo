@@ -8,6 +8,10 @@ under Unreleased, newest first, grouped by period.
 
 ### 2026-10: boot flow
 
+#### Changed
+- README screenshots come from the current build's own frame dumps: a GIF from boot to J's Bar
+  and a still. The March 2026 puppet-era capture is gone.
+
 #### Fixed
 - A scripted boot now reaches gameplay (J's Bar, the first scenario's opening). On the way:
   - NOW LOADING hung because 0x1BB230 ("net_rpc", really subsystem init) was stubbed and the

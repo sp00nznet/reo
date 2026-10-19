@@ -35,7 +35,7 @@ Every wall so far, and how each was found, is in [docs/boot-gates.md](docs/boot-
 | Boot splashes, title screen, menus | works; the title background is missing |
 | FMV (IPU, Play!'s decoder) | plays; motion-compensated frames show green blocks |
 | Loading into the first scenario | works |
-| In-game 3D (VU1 + GS) | **draws**; runs far below full speed |
+| In-game 3D (VU1 + GS) | **draws**; about 35x slower than real time |
 | Playing the scenario | not tried yet |
 | Sound output (SPU2) | not implemented |
 | File #2 (SLUS-20984) | builds; no boot work |
@@ -43,12 +43,17 @@ Every wall so far, and how each was found, is in [docs/boot-gates.md](docs/boot-
 
 ## Screenshots
 
-![Title screen from the old puppet build](docs/title_screen.png)
+![Boot splashes, menus and J's Bar from a headless run](docs/screenshots/hero.gif)
 
-This is from March 2026, **not** from the current build. It came from the earlier "puppet"
-approach: the framebuffer was captured from PCSX2 and written into the window, so the game itself
-did not draw it. The current build draws nothing recognisable yet. It will be replaced with a real
-capture once the game reaches its title screen on its own.
+A scripted headless run of the current build (2026-10-19), from its own frame dumps
+(`PS2X_FRAME_DUMP`, one frame every 10 vsyncs). It shows the boot splashes, the menus up to
+character select, and the first scenario in J's Bar. The FMVs and the loading screen are cut.
+The green behind the menus is the missing title background. The bar is reached after about
+2.5 minutes of host time. From there it is about 35 times slower than real time: the 27 seconds of
+game time in the bar took about 16 minutes. The GIF plays at 10 fps, so it runs about 1.7 times
+faster than the game would.
+
+![Kevin in J's Bar](docs/screenshots/js_bar.png)
 
 ## Getting Started
 

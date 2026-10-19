@@ -32,4 +32,6 @@ GS dumps and memory for comparison. tools/gs_dump_replay reads PCSX2's .gs dump
 format; that is format compatibility, and GPL-3.0 here covers it either way.
 
 Not distributed, ever: game code or data, recompiled/generated source, BIOS
-images, or anything captured from a running game (REPO_RULES section 3).
+images, or game memory and DMA dumps captured from a running game (REPO_RULES
+section 3). The README's progress screenshots and GIF are the exception that
+REPO_RULES' Screenshots section allows.
