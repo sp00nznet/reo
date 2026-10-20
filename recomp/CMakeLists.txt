@@ -15,7 +15,8 @@ set(REO_COMPILE_JOBS "8" CACHE STRING "Number of parallel cl.exe jobs (MSVC /MP)
 project(reo_recomp CXX)
 
 # PS2Recomp paths (shared between both targets)
-set(PS2RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/PS2Recomp")
+set(PS2RECOMP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/PS2Recomp" CACHE PATH
+    "PS2Recomp checkout to build against (override to try another branch in a separate build dir)")
 set(PS2RECOMP_BUILD "${PS2RECOMP_DIR}/out/build-upstream")
 
 # REO runtime sources (hardware emulation subsystems)
