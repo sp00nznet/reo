@@ -122,6 +122,8 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
             /MP${REO_COMPILE_JOBS}  # Parallel compilation; see REO_COMPILE_JOBS above
             /O2           # Optimize
         )
+        # A map file lets PS2X_PROFILE samples (exe-relative addresses) be named without a PDB.
+        target_link_options(${TARGET_NAME} PRIVATE /MAP)
     endif()
 
     target_compile_definitions(${TARGET_NAME} PRIVATE
