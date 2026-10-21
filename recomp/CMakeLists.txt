@@ -80,6 +80,10 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
         endif()
     endforeach()
 
+    # Compiled VU1 microprograms: PS2Recomp's ps2xRuntime/tools/vu1_recomp.py output, made from
+    # code images a PS2X_VU1_DUMP run saved. Optional; without them the VU1 interpreter runs.
+    file(GLOB VU1_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/config/output_vu1/*.cpp")
+
     add_executable(${TARGET_NAME}
         reo_bootstrap.cpp
         reo_overlays.cpp
@@ -94,6 +98,7 @@ function(add_recomp_target TARGET_NAME OUTPUT_DIR GAME_DEFINE)
         ${REO_RUNTIME_SOURCES}
         ${RECOMP_SOURCES}
         ${OVERLAY_SOURCES}
+        ${VU1_SOURCES}
     )
 
     target_include_directories(${TARGET_NAME} PRIVATE
